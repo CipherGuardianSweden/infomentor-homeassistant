@@ -1,0 +1,104 @@
+# Skolpanel för InfoMentor-integrationen
+#
+# Så använder du den:
+#   1. Inställningar → Instrumentpaneler → Lägg till instrumentpanel
+#      → "Ny instrumentpanel från grunden" → skapa (t.ex. "Skola")
+#   2. Öppna den → ⋮ → Redigera instrumentpanel → ⋮ → Rå redigerare
+#   3. Klistra in allt nedan och byt entitets-ID:n mot dina egna.
+#
+# Entitets-ID:n byggs från barnets namn (och ev. smeknamn i inställningarna).
+# Hitta dina under Inställningar → Enheter & tjänster → InfoMentor → en enhet.
+# Exemplen nedan använder barnen Anna, Bo och Lisa.
+
+views:
+  - title: Skola
+    path: skola
+    icon: mdi:school
+    type: masonry
+    cards:
+      # --- Rubrik ---------------------------------------------------------
+      - type: markdown
+        content: |
+          # 🎒 Skolan
+          {{ now().strftime('%A %-d %B') }}
+
+      # --- Banner: idrott imorgon (visas bara om något barn har idrott) ---
+      - type: conditional
+        conditions:
+          - condition: or
+            conditions:
+              - condition: state
+                entity_id: binary_sensor.anna_pe_next_school_day
+                state: "on"
+              - condition: state
+                entity_id: binary_sensor.bo_pe_next_school_day
+                state: "on"
+              - condition: state
+                entity_id: binary_sensor.lisa_pe_next_school_day
+                state: "on"
+        card:
+          type: markdown
+          content: |
+            ## 🏃 Idrott imorgon
+            Glöm inte idrottskläderna!
+
+      # --- Ett kort per barn ---------------------------------------------
+      - type: markdown
+        content: |
+          ## 🧒 Anna
+          🕗 **Skoldag imorgon:** {{ states('sensor.anna_school_day') }}
+          🏃 **Idrott imorgon:** {{ state_attr('binary_sensor.anna_pe_next_school_day', 'times') | join(', ') if is_state('binary_sensor.anna_pe_next_school_day', 'on') else 'Nej' }}
+          📚 **Uppgifter kvar:** {{ states('sensor.anna_assignments_due') }}
+          📅 **Nästa:** {{ states('sensor.anna_next_event') }}
+
+      - type: markdown
+        content: |
+          ## 🧒 Bo
+          🕗 **Skoldag imorgon:** {{ states('sensor.bo_school_day') }}
+          🏃 **Idrott imorgon:** {{ state_attr('binary_sensor.bo_pe_next_school_day', 'times') | join(', ') if is_state('binary_sensor.bo_pe_next_school_day', 'on') else 'Nej' }}
+          📚 **Uppgifter kvar:** {{ states('sensor.bo_assignments_due') }}
+          📅 **Nästa:** {{ states('sensor.bo_next_event') }}
+
+      - type: markdown
+        content: |
+          ## 🧒 Lisa
+          🕗 **Skoldag imorgon:** {{ states('sensor.lisa_school_day') }}
+          🏃 **Idrott imorgon:** {{ state_attr('binary_sensor.lisa_pe_next_school_day', 'times') | join(', ') if is_state('binary_sensor.lisa_pe_next_school_day', 'on') else 'Nej' }}
+          📚 **Uppgifter kvar:** {{ states('sensor.lisa_assignments_due') }}
+          📅 **Nästa:** {{ states('sensor.lisa_next_event') }}
+
+      # --- Uppgifter veckan som kommer -----------------------------------
+      - type: markdown
+        content: |
+          ## 📚 Uppgifter denna vecka
+          {% set barn = {
+            'Anna': 'sensor.anna_assignments_due',
+            'Bo':   'sensor.bo_assignments_due',
+            'Lisa': 'sensor.lisa_assignments_due'
+          } %}
+          {% for namn, sensor in barn.items() %}
+          {% set uppg = state_attr(sensor, 'assignments') or [] %}
+          {% if uppg | count > 0 %}
+          **{{ namn }}**
+          {% for u in uppg %}
+          • {{ u.title }}{% if u.subject %} _{{ u.subject }}_{% endif %} – {{ u.due }}
+          {% endfor %}
+          {% else %}
+          **{{ namn }}:** inget inlämnat inom en vecka 🎉
+          {% endif %}
+          {% endfor %}
+
+      # --- Skolmat --------------------------------------------------------
+      # OBS: kontrollera ditt entitets-ID (kan heta …_skolmat om HA är på svenska)
+      - type: conditional
+        conditions:
+          - condition: state
+            entity_id: sensor.infomentor_school_lunch
+            state_not: "unknown"
+        card:
+          type: markdown
+          content: |
+            ## 🍽️ Skolmat imorgon
+            {% for d in (state_attr('sensor.infomentor_school_lunch', 'dishes') or []) %}
+            - **{{ d.label }}:** {{ d.dish }}
+            {% endfor %}

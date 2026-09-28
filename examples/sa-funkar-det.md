@@ -5,8 +5,9 @@ inte kopplad till InfoMentor.
 
 > **Hitta dina entitets-ID:n:** Inställningar → Enheter & tjänster → **InfoMentor**
 > → öppna en enhet → *Entiteter*. ID:na byggs från barnets namn (och de
-> smeknamn du sätter i integrationens inställningar), t.ex.
-> `sensor.anna_school_day`. Byt ut namnen i exemplen mot dina egna.
+> smeknamn du sätter i integrationens inställningar). I exemplen nedan heter
+> barnen **Anna**, **Bo** och **Lisa** — byt till dina egna, t.ex.
+> `sensor.anna_school_day` → `sensor.ditt_barn_school_day`.
 
 ## Vad du får
 
@@ -20,6 +21,9 @@ Ett **device per barn** med:
 | `…_pe_next_school_day` | **på** när idrott/gymnastik väntar nästa skoldag |
 
 Plus ett nav‑device med `…_lunch` om du aktiverat skolmat.
+
+📊 **Färdig dashboard:** [`skolpanel.yaml`](skolpanel.yaml) — importera och njut
+(se avsnittet *Skolpanel* längst ner).
 
 ---
 
@@ -44,8 +48,7 @@ actions:
 mode: single
 ```
 
-Vill du fånga alla barn i en automation, gör tre conditions/actions eller kör
-`state` per sensor.
+Vill du fånga alla barn i en automation, upprepa condition/action per barn.
 
 ## 2. Morgonöversikt ☀️
 
@@ -63,7 +66,7 @@ actions:
       message: >-
         {% set barn = {
           'Anna': ('sensor.anna_school_day', 'sensor.anna_assignments_due'),
-          'Bo':    ('sensor.bo_school_day',    'sensor.bo_assignments_due'),
+          'Bo':   ('sensor.bo_school_day',   'sensor.bo_assignments_due'),
           'Lisa': ('sensor.lisa_school_day', 'sensor.lisa_assignments_due')
         } %}
         {% for namn, s in barn.items() -%}
@@ -91,29 +94,22 @@ actions:
 mode: single
 ```
 
-## 4. Skolpanel i hallen 🖥️
-
-Ett enkelt kort som visar läget (byt entitets-ID:n mot dina):
-
-```yaml
-type: entities
-title: Skolan
-entities:
-  - entity: sensor.anna_school_day
-    name: Anna – skoldag
-  - entity: sensor.anna_assignments_due
-    name: Anna – uppgifter kvar
-  - entity: binary_sensor.anna_pe_next_school_day
-    name: Idrott imorgon
-  - entity: sensor.anna_next_event
-    name: Nästa händelse
-```
-
 ## Skolmat 🍽️
 
 Aktivera **Hämta skolmat** i inställningarna och ange **Mateo‑enhets‑ID** från
 länken på `meny.mateo.se` (den sista siffran i adressen, t.ex. `…/kommun/123` →
 `123`). Då får du nästa skoldags rätter i en sensor.
+
+## Skolpanel 🖥️
+
+[`skolpanel.yaml`](skolpanel.yaml) är ett färdigt dashboard‑utseende med ett
+kort per barn, en idrottsbanner och skolmat. Så importerar du det:
+
+1. **Inställningar → Instrumentpaneler → Lägg till instrumentpanel** →
+   *Ny instrumentpanel från grunden* → skapa (t.ex. "Skola").
+2. Öppna den → ⋮ → **Redigera instrumentpanel** → ⋮ → **Rå redigerare**.
+3. Klistra in innehållet i `skolpanel.yaml` (byt entitets‑ID:n mot dina).
+4. Klart!
 
 ---
 

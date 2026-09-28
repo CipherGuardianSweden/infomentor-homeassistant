@@ -20,11 +20,16 @@ One device per child, plus a hub device:
 
 | Entity | Type | Meaning |
 |---|---|---|
-| `sensor.<child>_skoldag` | sensor | school day start–end (next school day, e.g. `08:00–14:40`), with the first/last lesson as attributes |
-| `sensor.<child>_uppgifter` | sensor | number of assignments due within 7 days, with the list as an attribute |
-| `sensor.<child>_nasta_handelse` | sensor | next calendar event (test, trip, …) |
-| `binary_sensor.<child>_idrott_nasta_skoldag` | binary sensor | on when PE/gymnastics is coming up — *remember the gym bag* |
-| `sensor.skolmat_nasta_skoldag` | sensor | school lunch (optional, from Mateo) |
+| `sensor.<child>_school_day` | sensor | school day start–end (next school day, e.g. `08:00–14:40`), with the first/last lesson as attributes |
+| `sensor.<child>_assignments_due` | sensor | number of assignments due within 7 days, with the list as an attribute |
+| `sensor.<child>_next_event` | sensor | next calendar event (test, trip, …) |
+| `binary_sensor.<child>_pe_next_school_day` | binary sensor | on when PE/gymnastics is coming up — *remember the gym bag* |
+| `sensor.infomentor_school_lunch` | sensor | school lunch (optional, from Mateo) |
+
+> Entity IDs follow your Home Assistant language: the suffixes above are the
+> English names. A Swedish HA gives `…_skoldag`, `…_uppgifter`,
+> `…_nasta_handelse`, `…_idrott_nasta_skoldag`. Check yours under
+> Settings → Devices & Services → InfoMentor → device → Entities.
 
 Everything is polled on a configurable interval (default 20 minutes) using a
 `DataUpdateCoordinator`, with **re-authentication** handled by Home Assistant.
@@ -63,6 +68,9 @@ entities above.
 
 ## Automation ideas
 
+🇸🇪 **Svensk guide med fler exempel (idrottspåminnelse, morgonöversikt,
+skolpanel):** [examples/sa-funkar-det.md](examples/sa-funkar-det.md)
+
 ```yaml
 # Remind about the gym bag the evening before
 automation:
@@ -72,19 +80,19 @@ automation:
         at: "19:00"
     conditions:
       - condition: state
-        entity_id: binary_sensor.anna_idrott_nasta_skoldag
+        entity_id: binary_sensor.anna_pe_next_school_day
         state: "on"
     actions:
       - action: notify.mobile_app_phone
         data:
           message: "Idrott imorgon – packa idrottskläderna!"
 
-# Show the school day on a dashboard
+# Show the school day on a dashboard (or import examples/skolpanel.yaml)
 type: entities
 entities:
-  - sensor.anna_skoldag
-  - sensor.anna_uppgifter
-  - sensor.anna_nasta_handelse
+  - sensor.anna_school_day
+  - sensor.anna_assignments_due
+  - sensor.anna_next_event
 ```
 
 ## How it works
