@@ -14,8 +14,8 @@ from homeassistant.util import dt as dt_util
 from .coordinator import InfomentorCoordinator, PupilData
 from .entity import InfomentorHubEntity, InfomentorPupilEntity
 from .util import (
-    lunch_for,
     lessons_on,
+    lunch_for,
     next_school_day,
     school_day_bounds,
     tasks_due,

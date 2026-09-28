@@ -8,7 +8,6 @@ externa beroenden krävs.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import date, timedelta
@@ -74,7 +73,7 @@ class InfomentorApi:
                 allow_redirects=False,
                 timeout=REQUEST_TIMEOUT,
             )
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+        except (TimeoutError, aiohttp.ClientError) as err:
             raise CannotConnect(str(err)) from err
 
     async def _follow(self, url: str, *, method: str = "GET", data: Any = None) -> tuple[str, str]:

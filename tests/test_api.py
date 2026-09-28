@@ -7,6 +7,7 @@ import unittest
 try:
     import aiohttp  # noqa: F401
     import yarl
+
     from custom_components.infomentor.api import InfomentorApi, InvalidAuth
 
     AVAILABLE = True
