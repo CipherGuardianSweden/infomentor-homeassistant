@@ -1,0 +1,13 @@
+{
+  "entity": {
+    "sensor": {
+      "school_day": {"default": "mdi:school"},
+      "assignments": {"default": "mdi:clipboard-text-outline"},
+      "next_event": {"default": "mdi:calendar-star"},
+      "lunch": {"default": "mdi:silverware-fork-knife"}
+    },
+    "binary_sensor": {
+      "pe_next_school_day": {"default": "mdi:run"}
+    }
+  }
+}

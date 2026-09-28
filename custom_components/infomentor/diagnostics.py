@@ -1,0 +1,56 @@
+"""Diagnostik för InfoMentor (känsliga fält maskas)."""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+
+from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+
+from .util import lessons_on, next_school_day, school_day_bounds, tasks_due
+
+TO_REDACT = {"password", "username"}
+
+
+async def async_get_config_entry_diagnostics(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> dict[str, Any]:
+    """Returnerar diagnostik för en config-post."""
+    coordinator = entry.runtime_data.coordinator
+    data = coordinator.data
+    today = date.today()
+
+    pupils = []
+    if data is not None:
+        for pupil in data.pupils:
+            day = next_school_day(pupil.lessons, today)
+            pupils.append(
+                {
+                    "id": pupil.pupil_id,
+                    "name": pupil.name,
+                    "lessons": len(pupil.lessons),
+                    "calendar": len(pupil.calendar),
+                    "tasks": len(pupil.tasks),
+                    "tasks_due_7d": len(tasks_due(pupil.tasks, today, 7)),
+                    "next_school_day": day,
+                    "school_day": "–".join(school_day_bounds(lessons_on(pupil.lessons, day)))
+                    if day
+                    else None,
+                    "absent_today": pupil.attendance.get("absent_today"),
+                }
+            )
+
+    return {
+        "entry": {
+            "title": entry.title,
+            "data": async_redact_data(dict(entry.data), TO_REDACT),
+            "options": dict(entry.options),
+        },
+        "last_update_success": coordinator.last_update_success,
+        "pupils": pupils,
+        "lunch_days": len(data.lunch) if data else 0,
+        "notifications": len(data.notifications) if data else 0,
+        "news": len(data.news) if data else 0,
+    }

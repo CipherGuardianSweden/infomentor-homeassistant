@@ -1,0 +1,65 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Anslut till InfoMentor",
+        "description": "Logga in med e-post och lösenord för ditt InfoMentor-konto (Mentor).",
+        "data": {
+          "username": "E-post",
+          "password": "Lösenord"
+        },
+        "data_description": {
+          "username": "E-postadressen du använder i InfoMentor.",
+          "password": "Ditt InfoMentor-lösenord. Sparas lokalt i Home Assistant."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Logga in igen",
+        "description": "Dina InfoMentor-uppgifter accepteras inte längre.",
+        "data": {
+          "username": "E-post",
+          "password": "Lösenord"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Fel e-post eller lösenord.",
+      "cannot_connect": "Kunde inte nå InfoMentor.",
+      "unknown": "Oväntat fel."
+    },
+    "abort": {
+      "already_configured": "Det här kontot är redan konfigurerat.",
+      "reauth_successful": "Inloggad igen."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Inställningar för InfoMentor",
+        "data": {
+          "scan_interval": "Uppdateringsintervall (minuter)",
+          "enable_lunch": "Hämta skolmat",
+          "mateo_unit_id": "Mateo-enhets-ID",
+          "names": "Smeknamn"
+        },
+        "data_description": {
+          "scan_interval": "Hur ofta InfoMentor hämtas (5–180 minuter).",
+          "enable_lunch": "Hämta även skolmaten från Mateo.",
+          "mateo_unit_id": "Numeriskt enhets-ID från meny.mateo.se/<kommun>/<id>.",
+          "names": "En per rad: 'Efternamn, Förnamn = Smeknamn'."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "school_day": {"name": "Skoldag"},
+      "assignments": {"name": "Uppgifter"},
+      "next_event": {"name": "Nästa händelse"},
+      "lunch": {"name": "Skolmat"}
+    },
+    "binary_sensor": {
+      "pe_next_school_day": {"name": "Idrott nästa skoldag"}
+    }
+  }
+}

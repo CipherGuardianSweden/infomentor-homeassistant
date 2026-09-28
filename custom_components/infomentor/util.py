@@ -1,0 +1,327 @@
+"""Rena hjälpfunktioner — inga HA- eller nätberoenden.
+
+Här bor all parsning och härledning (skoldag, idrott, uppgifter, lunch), så att
+den kan enhetstestas utan Home Assistant installerat.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import date, datetime, timedelta
+from typing import Any
+
+BREAK_RE = re.compile(r"^(lunch|rast|ombyte|m-tid|studietid|frukost)$", re.IGNORECASE)
+PE_RE = re.compile(r"\b(idh|idr|idrott|gymnastik|gympa)\b", re.IGNORECASE)
+DONE_RE = re.compile(r"done|complete|klar", re.IGNORECASE)
+
+
+# --------------------------------------------------------------- namn och tid
+def display_name(hub_name: str) -> str:
+    """'Efternamn, Förnamn' -> 'Förnamn Efternamn'."""
+    parts = [p.strip() for p in str(hub_name or "").split(",") if p.strip()]
+    if len(parts) > 1:
+        return f"{' '.join(parts[1:])} {parts[0]}"
+    return parts[0] if parts else ""
+
+
+def to_date(value: Any) -> date | None:
+    """Tolkar datum/datetime/ISO-sträng. Returnerar None vid okänt."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "")[:10]
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def day_of(value: Any) -> str:
+    return str(value or "")[:10]
+
+
+def time_of(value: Any) -> str:
+    return str(value or "")[11:16]
+
+
+def is_break(title: Any) -> bool:
+    return bool(BREAK_RE.match(str(title or "").strip()))
+
+
+def is_pe(title: Any) -> bool:
+    return bool(PE_RE.search(str(title or "").strip()))
+
+
+def is_done(status: Any) -> bool:
+    return bool(DONE_RE.search(str(status or "")))
+
+
+def parse_names_option(text: Any) -> dict[str, str]:
+    """Tolkar options-fältet 'Hub-namn = Smeknamn' (en per rad)."""
+    mapping: dict[str, str] = {}
+    for line in str(text or "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() and value.strip():
+            mapping[key.strip()] = value.strip()
+    return mapping
+
+
+# --------------------------------------------------------------- HTML-parsning
+OAUTH_RE = re.compile(r'name="oauth_token"\s+value="([^"]*)"')
+_INPUT_RE = re.compile(r"<input\b[^>]*>", re.IGNORECASE)
+_NAME_RE = re.compile(r'name="([^"]+)"')
+_TYPE_RE = re.compile(r'type="([^"]+)"')
+
+
+def decode_html(value: str) -> str:
+    """Avkodar de HTML-entiteter som förekommer i formulärvärden."""
+    return (
+        value.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+        .replace("&#39;", "'")
+    )
+
+
+def hidden_input(html: str, name: str) -> str:
+    """Värdet på ett dolt fält, eller tom sträng."""
+    match = re.search(rf'name="{re.escape(name)}"[^>]*value="([^"]*)"', html, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+def extract_oauth_token(html: str) -> str | None:
+    match = OAUTH_RE.search(html)
+    return decode_html(match.group(1)) if match else None
+
+
+def find_login_fields(html: str) -> dict[str, str]:
+    """Hittar inloggningsformulärets fältnamn (server-control-ID kan variera)."""
+    fields: dict[str, str] = {}
+    for tag in _INPUT_RE.findall(html):
+        name_match = _NAME_RE.search(tag)
+        if not name_match:
+            continue
+        name = name_match.group(1)
+        type_match = _TYPE_RE.search(tag)
+        field_type = (type_match.group(1) if type_match else "text").lower()
+        if field_type == "password" and "password" not in fields:
+            fields["password"] = name
+        elif (
+            field_type == "text"
+            and "username" not in fields
+            and re.search(r"notandanafn|user|login|email|anvandare", name, re.IGNORECASE)
+        ):
+            fields["username"] = name
+        elif field_type == "submit" and "submit" not in fields:
+            fields["submit"] = name
+    # Fallback till de verifierade namn som dementor.net använde.
+    fields.setdefault("username", "login_ascx$txtNotandanafn")
+    fields.setdefault("password", "login_ascx$txtLykilord")
+    fields.setdefault("submit", "login_ascx$btnLogin")
+    return fields
+
+
+# --------------------------------------------------------------- hub-parsning
+def extract_pupils(html: str) -> list[dict[str, Any]]:
+    """Plockar ut IMHome.pupils ur hub-startsidans HTML."""
+    marker = '"pupils":['
+    start = html.find(marker)
+    if start < 0:
+        return []
+    open_idx = html.index("[", start)
+    depth = 0
+    for index in range(open_idx, len(html)):
+        char = html[index]
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(html[open_idx : index + 1])
+                except json.JSONDecodeError:
+                    return []
+    return []
+
+
+# --------------------------------------------------------------- normalisering
+def normalize_lessons(raw: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """gettimetablelist -> lektioner (utan raster/lunch)."""
+    out: list[dict[str, Any]] = []
+    for item in raw or []:
+        title = str(item.get("title") or "").strip()
+        if not title or is_break(title):
+            continue
+        notes = item.get("notes") or {}
+        out.append(
+            {
+                "title": title,
+                "start": str(item.get("start") or ""),
+                "end": str(item.get("end") or ""),
+                "room": str(notes.get("roomInfo") or item.get("details") or ""),
+                "teachers": str(notes.get("tutors") or "").strip(),
+                "all_day": bool(item.get("allDay")),
+                "is_pe": is_pe(title),
+            }
+        )
+    return out
+
+
+def normalize_calendar(raw: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """calendarv2/getentries -> kalenderposter (utan uppgifts-dubbletter)."""
+    out: list[dict[str, Any]] = []
+    for item in raw or []:
+        if str(item.get("url") or "").startswith("/task/show/"):
+            continue
+        subjects = item.get("subjects") or []
+        out.append(
+            {
+                "id": str(item.get("id") or ""),
+                "title": str(item.get("title") or "").strip(),
+                "start": str(item.get("startDateFull") or item.get("startDate") or ""),
+                "end": str(item.get("endDateFull") or item.get("endDate") or ""),
+                "all_day": bool(item.get("isAllDayEvent")),
+                "subjects": ", ".join(
+                    str(s.get("title")) for s in subjects if isinstance(s, Mapping) and s.get("title")
+                ),
+            }
+        )
+    return out
+
+
+def normalize_tasks(raw: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """task/GetTasks -> uppgifter."""
+    out: list[dict[str, Any]] = []
+    for item in raw or []:
+        out.append(
+            {
+                "id": str(item.get("id") or ""),
+                "title": str(item.get("title") or "").strip(),
+                "subject": str(item.get("subject") or ""),
+                "due": day_of(item.get("dueDate")),
+                "status": str(item.get("status") or ""),
+                "status_text": str(item.get("statusText") or ""),
+                "overdue": bool(item.get("isOverdue")),
+                "assigned": str(item.get("assignedOn") or ""),
+            }
+        )
+    return out
+
+
+def normalize_notifications(raw: Iterable[Mapping[str, Any]], child_by_id: Mapping[str, str]) -> list[dict[str, Any]]:
+    """GetNotifications -> notiser, mappade till barn via pupilSourceId."""
+    out: list[dict[str, Any]] = []
+    for item in raw or []:
+        source = str(item.get("pupilSourceId") or "")
+        pupil_id = source.split("|")[1] if "|" in source else ""
+        out.append(
+            {
+                "id": str(item.get("id") or ""),
+                "type": str(item.get("appType") or ""),
+                "title": str(item.get("title") or ""),
+                "sub_title": str(item.get("subTitle") or ""),
+                "date": str(item.get("dateSent") or item.get("orderDate") or ""),
+                "url": str(item.get("url") or ""),
+                "child_id": pupil_id,
+                "child": child_by_id.get(pupil_id, ""),
+            }
+        )
+    return out
+
+
+def normalize_attendance(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """attendance/appData -> närvaro."""
+
+    def sessions(key: str) -> list[str]:
+        return [
+            f"{s.get('title')} {s.get('formattedTimeString', '')}".strip()
+            for s in raw.get(key) or []
+            if s.get("isAbsent")
+        ]
+
+    return {
+        "absent_today": bool(raw.get("absentToday")),
+        "absent_tomorrow": bool(raw.get("absentTomorrow")),
+        "today": sessions("absenceTodaySessions"),
+        "tomorrow": sessions("absenceTomorrowSessions"),
+        "pending_leave": len(raw.get("leaveRequests") or []),
+    }
+
+
+def parse_mateo_days(payload: Iterable[Mapping[str, Any]]) -> dict[str, list[dict[str, str]]]:
+    """Mateo api/v1/days -> { 'YYYY-MM-DD': [{label, dish}] }."""
+    menu: dict[str, list[dict[str, str]]] = {}
+    for day in payload or []:
+        key = day_of(day.get("date"))
+        if not key:
+            continue
+        menu[key] = [
+            {"label": str(meal.get("type") or "Lunch"), "dish": str(meal.get("name") or "")}
+            for meal in day.get("meals") or []
+            if meal.get("name")
+        ]
+    return menu
+
+
+# --------------------------------------------------------------- härledning
+def next_school_day(lessons: Sequence[Mapping[str, Any]], from_day: date, include_today: bool = False) -> str | None:
+    """Första dagen (från from_day) som har lektioner."""
+    days = sorted({day_of(item.get("start")) for item in lessons if day_of(item.get("start"))})
+    for day in days:
+        parsed = to_date(day)
+        if parsed is None:
+            continue
+        if parsed > from_day or (include_today and parsed == from_day):
+            return day
+    return None
+
+
+def lessons_on(lessons: Sequence[Mapping[str, Any]], day: str) -> list[dict[str, Any]]:
+    return sorted(
+        (dict(item) for item in lessons if day_of(item.get("start")) == day),
+        key=lambda item: item.get("start", ""),
+    )
+
+
+def school_day_bounds(lessons: Sequence[Mapping[str, Any]]) -> tuple[str, str] | None:
+    """(start, slut) för en dags lektioner, som 'HH:MM'."""
+    if not lessons:
+        return None
+    first = min(item.get("start", "") for item in lessons)
+    last = max((item.get("end") or item.get("start") or "") for item in lessons)
+    return time_of(first), time_of(last)
+
+
+def pe_lessons(lessons: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [dict(item) for item in lessons if is_pe(item.get("title"))]
+
+
+def tasks_due(tasks: Iterable[Mapping[str, Any]], today: date, days: int = 7) -> list[dict[str, Any]]:
+    """Oavklarade uppgifter som förfaller inom `days` dagar (eller är försenade)."""
+    limit = today + timedelta(days=days)
+    out = []
+    for task in tasks or []:
+        if is_done(task.get("status")):
+            continue
+        due = to_date(task.get("due"))
+        if due is None or due > limit:
+            continue
+        out.append(dict(task))
+    return sorted(out, key=lambda item: item.get("due", ""))
+
+
+def upcoming_event(calendar: Iterable[Mapping[str, Any]], today: date) -> dict[str, Any] | None:
+    future = [dict(item) for item in calendar or [] if (to_date(item.get("start")) or date.min) >= today]
+    return min(future, key=lambda item: item.get("start", "")) if future else None
+
+
+def lunch_for(menu: Mapping[str, Sequence[Mapping[str, str]]], day: str | None) -> list[dict[str, str]]:
+    if not day:
+        return []
+    return [dict(item) for item in menu.get(day, [])]
