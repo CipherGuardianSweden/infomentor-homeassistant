@@ -15,6 +15,7 @@ views:
     max_columns: 3
     sections:
       - type: grid
+        column_span: 3
         cards:
           - type: custom:mushroom-title-card
             title: "🎒 Skolan"
@@ -124,6 +125,7 @@ views:
                 content_info: state
 
       - type: grid
+        column_span: 3
         cards:
           # OBS: kontrollera entitets-ID:t (…_skolmat om HA är på svenska)
           - type: custom:mushroom-template-card

@@ -15,8 +15,9 @@ views:
     icon: mdi:school
     max_columns: 3
     sections:
-      # --- Rubrik + idrottsbanner ----------------------------------------
+      # --- Rubrik + idrottsbanner (full bredd) ---------------------------
       - type: grid
+        column_span: 3
         cards:
           - type: heading
             heading: "🎒 Skolan"
@@ -124,8 +125,9 @@ views:
             icon: mdi:calendar-star
             color: purple
 
-      # --- Skolmat + veckans uppgifter -----------------------------------
+      # --- Skolmat + veckans uppgifter (full bredd) ----------------------
       - type: grid
+        column_span: 3
         cards:
           # OBS: kontrollera entitets-ID:t (…_skolmat om HA är på svenska)
           - type: heading
