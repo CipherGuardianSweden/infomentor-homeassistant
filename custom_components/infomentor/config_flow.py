@@ -75,7 +75,11 @@ class InfomentorConfigFlow(ConfigFlow, domain=DOMAIN):
                 if pupils:
                     title = f"InfoMentor ({len(pupils)} barn)"
                 return self.async_create_entry(
-                    title=title, data={CONF_USERNAME: username, CONF_PASSWORD: user_input[CONF_PASSWORD]}
+                    title=title,
+                    data={
+                        CONF_USERNAME: username,
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    },
                 )
         return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors)
 
@@ -102,7 +106,10 @@ class InfomentorConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates={CONF_USERNAME: username, CONF_PASSWORD: user_input[CONF_PASSWORD]},
+                    data_updates={
+                        CONF_USERNAME: username,
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    },
                 )
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -150,9 +157,9 @@ class InfomentorOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_MATEO_UNIT, default=options.get(CONF_MATEO_UNIT, "")
                 ): selector.TextSelector(),
-                vol.Optional(CONF_NAMES, default=options.get(CONF_NAMES, "")): selector.TextSelector(
-                    selector.TextSelectorConfig(multiline=True)
-                ),
+                vol.Optional(
+                    CONF_NAMES, default=options.get(CONF_NAMES, "")
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

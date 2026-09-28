@@ -45,7 +45,7 @@
         "data_description": {
           "scan_interval": "How often to poll InfoMentor (5–180 minutes).",
           "enable_lunch": "Also download the school lunch menu from Mateo.",
-          "mateo_unit_id": "Numeric unit id from meny.mateo.se/<municipality>/<id>.",
+          "mateo_unit_id": "The numeric unit id from the Mateo menu link on meny.mateo.se.",
           "names": "One per line: 'Lastname, Firstname = Nickname'."
         }
       }

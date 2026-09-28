@@ -105,7 +105,9 @@ class InfomentorApi:
             "X-Requested-With": "XMLHttpRequest",
         }
         payload = json.dumps(body) if body is not None else None
-        response = await self._once(f"{HUB_BASE}{path}", method="POST", data=payload, headers=headers)
+        response = await self._once(
+            f"{HUB_BASE}{path}", method="POST", data=payload, headers=headers
+        )
         try:
             if response.status in (401, 403):
                 raise InvalidAuth(f"HTTP {response.status} på {path}")
@@ -212,7 +214,9 @@ class InfomentorApi:
             f"{MATEO_API}/{unit_id}"
             f"?from={today.isoformat()}&to={(today + timedelta(days=days)).isoformat()}"
         )
-        response = await self._once(url, headers={"Accept": "application/json", "Referer": "https://meny.mateo.se/"})
+        response = await self._once(
+            url, headers={"Accept": "application/json", "Referer": "https://meny.mateo.se/"}
+        )
         try:
             if response.status != 200:
                 raise InfomentorError(f"Mateo svarade {response.status}")

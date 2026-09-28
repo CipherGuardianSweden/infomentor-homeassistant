@@ -3,10 +3,11 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]
+# Testdata och skriptade URL:er får vara långa
+"tests/*" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

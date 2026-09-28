@@ -177,7 +177,8 @@ class LunchSensor(InfomentorHubEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
-        dishes = lunch_for(self.coordinator.data.lunch if self.coordinator.data else {}, self._next_day())
+        data = self.coordinator.data
+        dishes = lunch_for(data.lunch if data else {}, self._next_day())
         return "; ".join(dish["dish"] for dish in dishes) if dishes else None
 
     @property

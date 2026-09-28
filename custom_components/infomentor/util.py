@@ -188,7 +188,9 @@ def normalize_calendar(raw: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]
                 "end": str(item.get("endDateFull") or item.get("endDate") or ""),
                 "all_day": bool(item.get("isAllDayEvent")),
                 "subjects": ", ".join(
-                    str(s.get("title")) for s in subjects if isinstance(s, Mapping) and s.get("title")
+                    str(s.get("title"))
+                    for s in subjects
+                    if isinstance(s, Mapping) and s.get("title")
                 ),
             }
         )
@@ -214,7 +216,9 @@ def normalize_tasks(raw: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def normalize_notifications(raw: Iterable[Mapping[str, Any]], child_by_id: Mapping[str, str]) -> list[dict[str, Any]]:
+def normalize_notifications(
+    raw: Iterable[Mapping[str, Any]], child_by_id: Mapping[str, str]
+) -> list[dict[str, Any]]:
     """GetNotifications -> notiser, mappade till barn via pupilSourceId."""
     out: list[dict[str, Any]] = []
     for item in raw or []:
@@ -270,7 +274,9 @@ def parse_mateo_days(payload: Iterable[Mapping[str, Any]]) -> dict[str, list[dic
 
 
 # --------------------------------------------------------------- härledning
-def next_school_day(lessons: Sequence[Mapping[str, Any]], from_day: date, include_today: bool = False) -> str | None:
+def next_school_day(
+    lessons: Sequence[Mapping[str, Any]], from_day: date, include_today: bool = False
+) -> str | None:
     """Första dagen (från from_day) som har lektioner."""
     days = sorted({day_of(item.get("start")) for item in lessons if day_of(item.get("start"))})
     for day in days:
@@ -302,7 +308,9 @@ def pe_lessons(lessons: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return [dict(item) for item in lessons if is_pe(item.get("title"))]
 
 
-def tasks_due(tasks: Iterable[Mapping[str, Any]], today: date, days: int = 7) -> list[dict[str, Any]]:
+def tasks_due(
+    tasks: Iterable[Mapping[str, Any]], today: date, days: int = 7
+) -> list[dict[str, Any]]:
     """Oavklarade uppgifter som förfaller inom `days` dagar (eller är försenade)."""
     limit = today + timedelta(days=days)
     out = []
@@ -317,11 +325,17 @@ def tasks_due(tasks: Iterable[Mapping[str, Any]], today: date, days: int = 7) ->
 
 
 def upcoming_event(calendar: Iterable[Mapping[str, Any]], today: date) -> dict[str, Any] | None:
-    future = [dict(item) for item in calendar or [] if (to_date(item.get("start")) or date.min) >= today]
+    future = [
+        dict(item)
+        for item in calendar or []
+        if (to_date(item.get("start")) or date.min) >= today
+    ]
     return min(future, key=lambda item: item.get("start", "")) if future else None
 
 
-def lunch_for(menu: Mapping[str, Sequence[Mapping[str, str]]], day: str | None) -> list[dict[str, str]]:
+def lunch_for(
+    menu: Mapping[str, Sequence[Mapping[str, str]]], day: str | None
+) -> list[dict[str, str]]:
     if not day:
         return []
     return [dict(item) for item in menu.get(day, [])]
