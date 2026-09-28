@@ -8,7 +8,6 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .coordinator import InfomentorCoordinator
 
@@ -25,7 +24,8 @@ class InfomentorRuntimeData:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Sätt upp en config-post."""
-    session = async_create_clientsession(hass, cookie_jar=aiohttp.CookieJar(unsafe=True))
+    # Egen session med egen cookie-jar (inloggningen sätter cookies per domän).
+    session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar(unsafe=True))
     coordinator = InfomentorCoordinator(hass, entry, session)
     await coordinator.async_config_entry_first_refresh()
 

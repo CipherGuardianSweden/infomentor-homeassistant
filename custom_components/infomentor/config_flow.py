@@ -9,7 +9,6 @@ import aiohttp
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import CannotConnect, InfomentorApi, InvalidAuth
 from .const import (
@@ -41,8 +40,12 @@ STEP_USER_SCHEMA = vol.Schema(
 
 
 async def _validate_credentials(hass, username: str, password: str) -> list[dict[str, Any]]:
-    """Logga in med en tillfällig session och returnera barnen."""
-    session = async_create_clientsession(hass, cookie_jar=aiohttp.CookieJar(unsafe=True))
+    """Logga in med en egen, tillfällig session och returnera barnen.
+
+    Vi skapar en egen aiohttp-session (egna cookies för inloggningen) i stället
+    för HAs delade — då är det korrekt att stänga den, och HAs session rörs inte.
+    """
+    session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar(unsafe=True))
     try:
         api = InfomentorApi(session, username, password)
         return await api.async_login()
