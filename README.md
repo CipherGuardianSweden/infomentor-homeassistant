@@ -69,7 +69,9 @@ entities above.
 ## Automation ideas
 
 🇸🇪 **Svensk guide med fler exempel (idrottspåminnelse, morgonöversikt,
-skolpanel):** [examples/sa-funkar-det.md](examples/sa-funkar-det.md)
+skolpanel):** [examples/sa-funkar-det.md](examples/sa-funkar-det.md) —
+ready-made dashboards: [built-in cards](examples/skolpanel.yaml) /
+[Mushroom](examples/skolpanel-mushroom.yaml)
 
 ```yaml
 # Remind about the gym bag the evening before

@@ -22,8 +22,9 @@ Ett **device per barn** med:
 
 Plus ett nav‑device med `…_lunch` om du aktiverat skolmat.
 
-📊 **Färdig dashboard:** [`skolpanel.yaml`](skolpanel.yaml) — importera och njut
-(se avsnittet *Skolpanel* längst ner).
+📊 **Färdig dashboard:** [`skolpanel.yaml`](skolpanel.yaml) (inbyggda kort) eller
+[`skolpanel-mushroom.yaml`](skolpanel-mushroom.yaml) (Mushroom) — se avsnittet
+*Skolpanel* längst ner.
 
 ---
 
@@ -102,13 +103,19 @@ länken på `meny.mateo.se` (den sista siffran i adressen, t.ex. `…/kommun/123
 
 ## Skolpanel 🖥️
 
-[`skolpanel.yaml`](skolpanel.yaml) är ett färdigt dashboard‑utseende med ett
-kort per barn, en idrottsbanner och skolmat. Så importerar du det:
+Två färdiga varianter — välj den som passar:
+
+- [`skolpanel.yaml`](skolpanel.yaml) — **inbyggda kort**, inga tillägg krävs
+  (sections, tiles, en idrottsbanner och skolmat).
+- [`skolpanel-mushroom.yaml`](skolpanel-mushroom.yaml) — lyxigare kort, kräver
+  [Mushroom](https://github.com/piitaya/lovelace-mushroom) via HACS.
+
+Så importerar du:
 
 1. **Inställningar → Instrumentpaneler → Lägg till instrumentpanel** →
    *Ny instrumentpanel från grunden* → skapa (t.ex. "Skola").
 2. Öppna den → ⋮ → **Redigera instrumentpanel** → ⋮ → **Rå redigerare**.
-3. Klistra in innehållet i `skolpanel.yaml` (byt entitets‑ID:n mot dina).
+3. Klistra in innehållet i valfri fil (byt entitets‑ID:n mot dina).
 4. Klart!
 
 ---

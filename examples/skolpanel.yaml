@@ -1,104 +1,159 @@
-# Skolpanel för InfoMentor-integrationen
+# Skolpanel för InfoMentor-integrationen (inbyggda kort — inga tillägg krävs)
 #
-# Så använder du den:
-#   1. Inställningar → Instrumentpaneler → Lägg till instrumentpanel
-#      → "Ny instrumentpanel från grunden" → skapa (t.ex. "Skola")
-#   2. Öppna den → ⋮ → Redigera instrumentpanel → ⋮ → Rå redigerare
-#   3. Klistra in allt nedan och byt entitets-ID:n mot dina egna.
+#   Inställningar → Instrumentpaneler → Lägg till instrumentpanel
+#   → "Ny instrumentpanel från grunden" → skapa ("Skola")
+#   → öppna → ⋮ → Redigera instrumentpanel → ⋮ → Rå redigerare → klistra in.
 #
-# Entitets-ID:n byggs från barnets namn (och ev. smeknamn i inställningarna).
-# Hitta dina under Inställningar → Enheter & tjänster → InfoMentor → en enhet.
-# Exemplen nedan använder barnen Anna, Bo och Lisa.
+# Byt entitets-ID:n mot dina egna. Suffixen följer HA:s språk
+# (engelska: _school_day, svenska: _skoldag). Exemplen använder Anna/Bo/Lisa.
+# Har du Mushroom installerat? Se skolpanel-mushroom.yaml för en lyxigare variant.
 
 views:
-  - title: Skola
+  - type: sections
+    title: Skola
     path: skola
     icon: mdi:school
-    type: masonry
-    cards:
-      # --- Rubrik ---------------------------------------------------------
-      - type: markdown
-        content: |
-          # 🎒 Skolan
-          {{ now().strftime('%A %-d %B') }}
-
-      # --- Banner: idrott imorgon (visas bara om något barn har idrott) ---
-      - type: conditional
-        conditions:
-          - condition: or
+    max_columns: 3
+    sections:
+      # --- Rubrik + idrottsbanner ----------------------------------------
+      - type: grid
+        cards:
+          - type: heading
+            heading: "🎒 Skolan"
+            heading_style: title
+            icon: mdi:school
+          - type: markdown
+            content: "{{ now().strftime('%A %-d %B') | capitalize }}"
+          - type: conditional
             conditions:
-              - condition: state
-                entity_id: binary_sensor.anna_pe_next_school_day
-                state: "on"
-              - condition: state
-                entity_id: binary_sensor.bo_pe_next_school_day
-                state: "on"
-              - condition: state
-                entity_id: binary_sensor.lisa_pe_next_school_day
-                state: "on"
-        card:
-          type: markdown
-          content: |
-            ## 🏃 Idrott imorgon
-            Glöm inte idrottskläderna!
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity_id: binary_sensor.anna_pe_next_school_day
+                    state: "on"
+                  - condition: state
+                    entity_id: binary_sensor.bo_pe_next_school_day
+                    state: "on"
+                  - condition: state
+                    entity_id: binary_sensor.lisa_pe_next_school_day
+                    state: "on"
+            card:
+              type: tile
+              entity: binary_sensor.anna_pe_next_school_day
+              name: Idrott imorgon — glöm inte kläderna!
+              icon: mdi:run
+              color: red
+              hide_state: true
 
-      # --- Ett kort per barn ---------------------------------------------
-      - type: markdown
-        content: |
-          ## 🧒 Anna
-          🕗 **Skoldag imorgon:** {{ states('sensor.anna_school_day') }}
-          🏃 **Idrott imorgon:** {{ state_attr('binary_sensor.anna_pe_next_school_day', 'times') | join(', ') if is_state('binary_sensor.anna_pe_next_school_day', 'on') else 'Nej' }}
-          📚 **Uppgifter kvar:** {{ states('sensor.anna_assignments_due') }}
-          📅 **Nästa:** {{ states('sensor.anna_next_event') }}
+      # --- Ett block per barn --------------------------------------------
+      - type: grid
+        cards:
+          - type: heading
+            heading: Anna
+            icon: mdi:account-school
+          - type: tile
+            entity: sensor.anna_school_day
+            name: Skoldag imorgon
+            icon: mdi:clock-outline
+            color: blue
+          - type: tile
+            entity: binary_sensor.anna_pe_next_school_day
+            name: Idrott imorgon
+            icon: mdi:run
+            color: red
+          - type: tile
+            entity: sensor.anna_assignments_due
+            name: Uppgifter kvar
+            icon: mdi:clipboard-text-outline
+            color: amber
+          - type: tile
+            entity: sensor.anna_next_event
+            name: Nästa händelse
+            icon: mdi:calendar-star
+            color: purple
 
-      - type: markdown
-        content: |
-          ## 🧒 Bo
-          🕗 **Skoldag imorgon:** {{ states('sensor.bo_school_day') }}
-          🏃 **Idrott imorgon:** {{ state_attr('binary_sensor.bo_pe_next_school_day', 'times') | join(', ') if is_state('binary_sensor.bo_pe_next_school_day', 'on') else 'Nej' }}
-          📚 **Uppgifter kvar:** {{ states('sensor.bo_assignments_due') }}
-          📅 **Nästa:** {{ states('sensor.bo_next_event') }}
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bo
+            icon: mdi:account-school
+          - type: tile
+            entity: sensor.bo_school_day
+            name: Skoldag imorgon
+            icon: mdi:clock-outline
+            color: blue
+          - type: tile
+            entity: binary_sensor.bo_pe_next_school_day
+            name: Idrott imorgon
+            icon: mdi:run
+            color: red
+          - type: tile
+            entity: sensor.bo_assignments_due
+            name: Uppgifter kvar
+            icon: mdi:clipboard-text-outline
+            color: amber
+          - type: tile
+            entity: sensor.bo_next_event
+            name: Nästa händelse
+            icon: mdi:calendar-star
+            color: purple
 
-      - type: markdown
-        content: |
-          ## 🧒 Lisa
-          🕗 **Skoldag imorgon:** {{ states('sensor.lisa_school_day') }}
-          🏃 **Idrott imorgon:** {{ state_attr('binary_sensor.lisa_pe_next_school_day', 'times') | join(', ') if is_state('binary_sensor.lisa_pe_next_school_day', 'on') else 'Nej' }}
-          📚 **Uppgifter kvar:** {{ states('sensor.lisa_assignments_due') }}
-          📅 **Nästa:** {{ states('sensor.lisa_next_event') }}
+      - type: grid
+        cards:
+          - type: heading
+            heading: Lisa
+            icon: mdi:account-school
+          - type: tile
+            entity: sensor.lisa_school_day
+            name: Skoldag imorgon
+            icon: mdi:clock-outline
+            color: blue
+          - type: tile
+            entity: binary_sensor.lisa_pe_next_school_day
+            name: Idrott imorgon
+            icon: mdi:run
+            color: red
+          - type: tile
+            entity: sensor.lisa_assignments_due
+            name: Uppgifter kvar
+            icon: mdi:clipboard-text-outline
+            color: amber
+          - type: tile
+            entity: sensor.lisa_next_event
+            name: Nästa händelse
+            icon: mdi:calendar-star
+            color: purple
 
-      # --- Uppgifter veckan som kommer -----------------------------------
-      - type: markdown
-        content: |
-          ## 📚 Uppgifter denna vecka
-          {% set barn = {
-            'Anna': 'sensor.anna_assignments_due',
-            'Bo':   'sensor.bo_assignments_due',
-            'Lisa': 'sensor.lisa_assignments_due'
-          } %}
-          {% for namn, sensor in barn.items() %}
-          {% set uppg = state_attr(sensor, 'assignments') or [] %}
-          {% if uppg | count > 0 %}
-          **{{ namn }}**
-          {% for u in uppg %}
-          • {{ u.title }}{% if u.subject %} _{{ u.subject }}_{% endif %} – {{ u.due }}
-          {% endfor %}
-          {% else %}
-          **{{ namn }}:** inget inlämnat inom en vecka 🎉
-          {% endif %}
-          {% endfor %}
-
-      # --- Skolmat --------------------------------------------------------
-      # OBS: kontrollera ditt entitets-ID (kan heta …_skolmat om HA är på svenska)
-      - type: conditional
-        conditions:
-          - condition: state
-            entity_id: sensor.infomentor_school_lunch
-            state_not: "unknown"
-        card:
-          type: markdown
-          content: |
-            ## 🍽️ Skolmat imorgon
-            {% for d in (state_attr('sensor.infomentor_school_lunch', 'dishes') or []) %}
-            - **{{ d.label }}:** {{ d.dish }}
-            {% endfor %}
+      # --- Skolmat + veckans uppgifter -----------------------------------
+      - type: grid
+        cards:
+          # OBS: kontrollera entitets-ID:t (…_skolmat om HA är på svenska)
+          - type: heading
+            heading: "🍽️ Skolmat imorgon"
+            icon: mdi:silverware-fork-knife
+          - type: markdown
+            content: |
+              {% for d in (state_attr('sensor.infomentor_school_lunch', 'dishes') or []) %}
+              **{{ d.label }}:** {{ d.dish }}
+              {% endfor %}
+          - type: heading
+            heading: "📚 Uppgifter denna vecka"
+            icon: mdi:clipboard-text-outline
+          - type: markdown
+            content: |
+              {% set barn = {
+                'Anna': 'sensor.anna_assignments_due',
+                'Bo':   'sensor.bo_assignments_due',
+                'Lisa': 'sensor.lisa_assignments_due'
+              } %}
+              {% for namn, sensor in barn.items() %}
+              {% set uppg = state_attr(sensor, 'assignments') or [] %}
+              {% if uppg | count > 0 %}
+              **{{ namn }}**
+              {% for u in uppg %}
+              • {{ u.title }}{% if u.subject %} _{{ u.subject }}_{% endif %} – {{ u.due }}
+              {% endfor %}
+              {% else %}
+              **{{ namn }}:** inget inlämnat inom en vecka 🎉
+              {% endif %}
+              {% endfor %}
