@@ -104,7 +104,7 @@ class InfomentorApi:
                 response.release()
         raise CannotConnect("för många omdirigeringar")
 
-    async def _post_hub(self, path: str, body: Any | None = None) -> Any:
+    async def _post_hub(self, path: str, body: Any | None = None, *, _retried: bool = False) -> Any:
         """POST mot en hub-endpoint. Tom body = död session."""
         headers = {
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -112,19 +112,31 @@ class InfomentorApi:
             "X-Requested-With": "XMLHttpRequest",
         }
         payload = json.dumps(body) if body is not None else None
-        response = await self._once(
-            f"{HUB_BASE}{path}", method="POST", data=payload, headers=headers
-        )
+        url = f"{HUB_BASE}{path}"
+        response = await self._once(url, method="POST", data=payload, headers=headers)
         try:
             status = response.status
-            redirected = status in {301, 302, 303, 307, 308}
+            location = response.headers.get("Location") or ""
+            final_url = str(response.url)
             text = await response.text()
         finally:
             response.release()
 
-        # Sessionen är död → be om nya uppgifter (reauth).
-        if status in (401, 403) or redirected:
-            raise InvalidAuth(f"HTTP {status} på {path} – sessionen har gått ut")
+        if status in (401, 403):
+            raise InvalidAuth(f"HTTP {status} på {path}")
+
+        if status in {301, 302, 303, 307, 308}:
+            target = str(URL(final_url).join(URL(location))) if location else "(okänd)"
+            # Omdirigeringen kan vara ett led i auth-handskakningen (forceOAuth).
+            # Följ den en gång och gör om anropet innan vi ger upp — och logga
+            # alltid vart den pekar så att felrapporter blir åtgärdbara.
+            _LOGGER.warning(
+                "InfoMentor: %s svarade %s → %s", path, status, target.replace(HUB_BASE, "")
+            )
+            if location and not _retried:
+                await self._follow(target)
+                return await self._post_hub(path, body, _retried=True)
+            raise InvalidAuth(f"{path} omdirigerade till {target}")
         if not text.strip():
             # Verifierat beteende: död session svarar 200 med tom body.
             raise InvalidAuth("tomt svar – sessionen har gått ut")
@@ -139,7 +151,13 @@ class InfomentorApi:
 
     # ------------------------------------------------------------- inloggning
     async def async_login(self) -> list[dict[str, Any]]:
-        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect."""
+        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect.
+
+        Börjar alltid med en ren cookie-jar. Utan det kan en halv/gammal session
+        göra att vi aldrig hittar inloggningsformuläret vid ett nytt försök
+        ("nådde aldrig inloggningsformuläret").
+        """
+        self._session.cookie_jar.clear()
         _, html = await self._follow(f"{HUB_BASE}/")
 
         oauth = extract_oauth_token(html)

@@ -49,6 +49,9 @@ async def async_get_config_entry_diagnostics(
             "options": dict(entry.options),
         },
         "last_update_success": coordinator.last_update_success,
+        "last_exception": str(coordinator.last_exception)
+        if coordinator.last_exception
+        else None,
         "pupils": pupils,
         "lunch_days": len(data.lunch) if data else 0,
         "notifications": len(data.notifications) if data else 0,
