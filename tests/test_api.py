@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 
 try:
@@ -159,7 +160,7 @@ class TestLogin(unittest.IsolatedAsyncioTestCase):
             state["posts"] += 1
             if state["posts"] == 1:
                 return FakeResponse(302, location=HUB + "Authentication/Login")
-            return FakeResponse(200, json_data={"items": []})
+            return FakeResponse(200, text=json.dumps({"items": []}))
 
         session = FakeSession(
             [
