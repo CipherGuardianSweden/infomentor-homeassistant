@@ -38,6 +38,7 @@ async def async_setup_entry(
             entities.append(AssignmentsSensor(coordinator, entry, pupil))
             entities.append(NextEventSensor(coordinator, entry, pupil))
             entities.append(LearnlogSensor(coordinator, entry, pupil))
+            entities.append(PlansSensor(coordinator, entry, pupil))
         entities.append(NewsSensor(coordinator, entry))
         if data.lunch_unit:
             entities.append(LunchSensor(coordinator, entry))
@@ -192,6 +193,43 @@ class LearnlogSensor(_PupilSensor):
                 }
                 for e in pupil.learnlog[:5]
             ],
+        }
+
+
+class PlansSensor(_PupilSensor):
+    """Planeringar — vad klassen arbetar med just nu.
+
+    State är antalet aktiva planeringar (Unit of Learning); attributet `plans`
+    innehåller de icke-avslutade med titel, ämne och status, så en dashboard kan
+    visa dem utan att ett anrop behövs per planering.
+    """
+
+    _attr_translation_key = "plans"
+    _attr_icon = "mdi:book-open-page-variant-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "st"
+
+    def __init__(self, coordinator, entry, pupil) -> None:
+        super().__init__(coordinator, entry, pupil, "plans")
+
+    @property
+    def native_value(self) -> int | None:
+        pupil = self.pupil
+        if pupil is None:
+            return None
+        return sum(1 for plan in pupil.plans if plan["state"] == "active")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        pupil = self.pupil
+        if pupil is None:
+            return {}
+        open_plans = [plan for plan in pupil.plans if plan["state"] != "finished"]
+        return {
+            "plans": open_plans,
+            "active": sum(1 for plan in pupil.plans if plan["state"] == "active"),
+            "not_started": sum(1 for plan in pupil.plans if plan["state"] == "notstarted"),
+            "finished": sum(1 for plan in pupil.plans if plan["state"] == "finished"),
         }
 
 

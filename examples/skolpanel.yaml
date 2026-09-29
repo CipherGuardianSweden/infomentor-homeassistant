@@ -160,6 +160,50 @@ views:
               📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
               *Inget veckobrev ännu.*{% endif %}
 
+      # --- Planeringar (Unit of Learning) — full bredd, ett kort per barn --
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: "📖 Planeringar"
+            icon: mdi:book-open-page-variant-outline
+          - type: markdown
+            content: |
+              {%- set p = state_attr('sensor.anna_plans','plans') or [] %}
+              **Anna{% if p %} · {{ p | length }} pågående{% endif %}**
+
+              {%- if p %}
+              {%- for x in p %}
+              - **{{ x.subjects | join(', ') or 'Planering' }}** — {{ x.title }}{% if x.state == 'notstarted' %} _(ej startad)_{% endif %}
+              {%- endfor %}
+              {%- else %}
+              *Inga aktiva planeringar.*
+              {%- endif %}
+          - type: markdown
+            content: |
+              {%- set p = state_attr('sensor.bo_plans','plans') or [] %}
+              **Bo{% if p %} · {{ p | length }} pågående{% endif %}**
+
+              {%- if p %}
+              {%- for x in p %}
+              - **{{ x.subjects | join(', ') or 'Planering' }}** — {{ x.title }}{% if x.state == 'notstarted' %} _(ej startad)_{% endif %}
+              {%- endfor %}
+              {%- else %}
+              *Inga aktiva planeringar.*
+              {%- endif %}
+          - type: markdown
+            content: |
+              {%- set p = state_attr('sensor.lisa_plans','plans') or [] %}
+              **Lisa{% if p %} · {{ p | length }} pågående{% endif %}**
+
+              {%- if p %}
+              {%- for x in p %}
+              - **{{ x.subjects | join(', ') or 'Planering' }}** — {{ x.title }}{% if x.state == 'notstarted' %} _(ej startad)_{% endif %}
+              {%- endfor %}
+              {%- else %}
+              *Inga aktiva planeringar.*
+              {%- endif %}
+
       # --- Skolmat + veckans uppgifter (full bredd) ----------------------
       - type: grid
         column_span: 3
@@ -203,7 +247,7 @@ views:
             heading: "📰 Nyheter"
             icon: mdi:newspaper-variant-outline
           - type: markdown
-            content: >-
-              {% for n in (state_attr('sensor.infomentor_school_news','news') or [])[:5] %}- **{{ n.title }}**
-                *{{ n.published }}{% if n.by %} · {{ n.by }}{% endif %}*
-              {% endfor %}
+            content: |
+              {%- for n in (state_attr('sensor.infomentor_school_news','news') or [])[:5] %}
+              - **{{ n.title }}** — *{{ n.published }}{% if n.by %} · {{ n.by }}{% endif %}*
+              {%- endfor %}

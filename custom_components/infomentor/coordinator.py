@@ -30,6 +30,7 @@ from .util import (
     normalize_lessons,
     normalize_news,
     normalize_notifications,
+    normalize_plans,
     normalize_tasks,
     parse_mateo_days,
     parse_mateo_unit,
@@ -51,6 +52,7 @@ class PupilData:
     tasks: list[dict[str, Any]] = field(default_factory=list)
     attendance: dict[str, Any] = field(default_factory=dict)
     learnlog: list[dict[str, Any]] = field(default_factory=list)
+    plans: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -162,6 +164,11 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                     f"lärlogg ({who})", self.api.async_learnlog(pupil), {}, strict=strict
                 )
             )
+            plans = normalize_plans(
+                await self._safe(
+                    f"planeringar ({who})", self.api.async_plans(pupil), {}, strict=strict
+                )
+            )
 
             data.pupils.append(
                 PupilData(
@@ -174,6 +181,7 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                     tasks=tasks,
                     attendance=attendance,
                     learnlog=learnlog,
+                    plans=plans,
                 )
             )
 

@@ -24,13 +24,15 @@ One device per child, plus a hub device:
 | `sensor.<child>_assignments_due` | sensor | number of assignments due within 7 days, with the list as an attribute |
 | `sensor.<child>_next_event` | sensor | next calendar event (test, trip, …) |
 | `sensor.<child>_weekly_letter` | sensor | the teacher's **weekly letter** (learnlog): latest title, with full text, subject, date and attachments as attributes |
+| `sensor.<child>_plans` | sensor | number of **plans** (Unit of Learning) in progress, with the open ones — title, subject and state — as attributes |
 | `binary_sensor.<child>_pe_next_school_day` | binary sensor | on when PE/gymnastics is coming up — *remember the gym bag* |
 | `sensor.infomentor_school_news` | sensor | school news: count, with the latest 10 as attributes |
 | `sensor.infomentor_school_lunch` | sensor | school lunch (optional, from Mateo) |
 
 > Entity IDs follow your Home Assistant language: the suffixes above are the
 > English names. A Swedish HA gives `…_skoldag`, `…_uppgifter`,
-> `…_nasta_handelse`, `…_idrott_nasta_skoldag`. Check yours under
+> `…_nasta_handelse`, `…_veckobrev`, `…_planeringar`,
+> `…_idrott_nasta_skoldag`. Check yours under
 > Settings → Devices & Services → InfoMentor → device → Entities.
 
 Everything is polled on a configurable interval (default 20 minutes) using a

@@ -68,6 +68,9 @@
       "learnlog": {
         "name": "Weekly letter"
       },
+      "plans": {
+        "name": "Plans"
+      },
       "news": {
         "name": "School news"
       }

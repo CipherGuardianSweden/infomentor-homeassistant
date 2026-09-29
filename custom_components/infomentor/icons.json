@@ -16,6 +16,9 @@
       "learnlog": {
         "default": "mdi:email-newsletter"
       },
+      "plans": {
+        "default": "mdi:book-open-page-variant-outline"
+      },
       "news": {
         "default": "mdi:newspaper-variant-outline"
       }

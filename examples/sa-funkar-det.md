@@ -20,6 +20,7 @@ Ett **device per barn** med:
 | `…_next_event` | nästa kalenderhändelse (prov, utflykt …) |
 | `…_pe_next_school_day` | **på** när idrott/gymnastik väntar nästa skoldag |
 | `…_weekly_letter` | **veckobrev** (lärloggen): senaste rubriken + hela texten som attribut |
+| `…_plans` | **planeringar** (Unit of Learning): antal pågående + listan som attribut |
 
 Plus ett nav‑device med `…_school_news` (skolans nyheter) och `…_school_lunch`
 (skolmat, om du aktiverat det).
@@ -40,6 +41,24 @@ content: >-
   {% set e = (state_attr('sensor.anna_weekly_letter','entries') or []) %}
   ### 📬 Anna{% if e %} · {{ e[0].title }}{% endif %}
   {% if e %}{{ e[0].text[:600] }}{% else %}*Inget veckobrev ännu.*{% endif %}
+```
+
+## Planeringar 📖
+
+`…_plans` visar vad klassen arbetar med just nu (appen **Planeringar**, "Unit of
+Learning"):
+
+- **state** är antalet **aktiva** planeringar
+- attributet **`plans`** innehåller de icke‑avslutade: `{id, title, subjects, state}`
+- `state` är `active`, `notstarted` (planerad men inte startad) eller `finished`
+  — avslutade ligger inte med i `plans`, men räknas i attributet `finished`
+
+```yaml
+type: markdown
+content: |
+  {%- for p in (state_attr('sensor.anna_plans','plans') or []) %}
+  - **{{ p.subjects | join(', ') or 'Planering' }}** — {{ p.title }}
+  {%- endfor %}
 ```
 
 📊 **Färdig dashboard:** [`skolpanel.yaml`](skolpanel.yaml) (inbyggda kort) eller

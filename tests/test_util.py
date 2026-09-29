@@ -242,6 +242,34 @@ class TestLearnlogAndNews(unittest.TestCase):
         self.assertEqual(out[0]["title"], "Nyast")
 
 
+class TestPlans(unittest.TestCase):
+    RAW = {
+        "uols": [
+            {"id": 2, "title": " Bild ", "subjects": [20], "state": "finished"},
+            {"id": 1, "title": "Spanska 1C", "subjects": [10, 99], "state": "active"},
+            {"id": 3, "title": "Kemi", "subjects": [], "state": "notstarted"},
+        ],
+        "subjects": [{"id": 10, "name": "Spanska"}, {"id": 20, "name": "Bild"}],
+    }
+
+    def test_normalize_plans_maps_subjects(self):
+        out = util.normalize_plans(self.RAW)
+        self.assertEqual(out[0]["title"], "Spanska 1C")
+        self.assertEqual(out[0]["subjects"], ["Spanska"])  # okänt ämnes-id hoppas över
+
+    def test_normalize_plans_keeps_order_but_finished_last(self):
+        out = util.normalize_plans(self.RAW)
+        self.assertEqual([plan["id"] for plan in out], ["1", "3", "2"])
+        self.assertEqual([plan["state"] for plan in out], ["active", "notstarted", "finished"])
+
+    def test_normalize_plans_tolerates_junk(self):
+        self.assertEqual(util.normalize_plans({}), [])
+        self.assertEqual(
+            util.normalize_plans({"uols": [None, {"id": 5}], "subjects": None}),
+            [{"id": "5", "title": "", "subjects": [], "state": ""}],
+        )
+
+
 class TestDerivation(unittest.TestCase):
     def setUp(self):
         self.lessons = util.normalize_lessons(

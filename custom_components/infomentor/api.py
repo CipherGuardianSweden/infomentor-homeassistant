@@ -242,6 +242,15 @@ class InfomentorApi:
         data = await self._post_hub("/learnlog/learnlog/appData", {})
         return data if isinstance(data, dict) else {}
 
+    async def async_plans(self, pupil: MappingLike) -> dict[str, Any]:
+        """Planeringar (Unit of Learning) för valt barn.
+
+        Detaljvyn (`GetUol` med body `{id}`) hämtas medvetet inte här — den
+        kostar ett anrop per planering och behövs inte för listan.
+        """
+        data = await self._post_hub("/UolV2/UolV2/GetUols", {})
+        return data if isinstance(data, dict) else {}
+
     async def async_notifications(self) -> list[dict[str, Any]]:
         data = await self._post_hub("/NotificationApp/NotificationApp/GetNotifications", {})
         return data.get("notifications", []) if isinstance(data, dict) else []

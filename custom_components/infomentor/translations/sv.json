@@ -68,6 +68,9 @@
       "learnlog": {
         "name": "Veckobrev"
       },
+      "plans": {
+        "name": "Planeringar"
+      },
       "news": {
         "name": "Skolans nyheter"
       }

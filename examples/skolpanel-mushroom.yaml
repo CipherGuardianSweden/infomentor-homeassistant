@@ -136,6 +136,56 @@ views:
               📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
               *Inget veckobrev ännu.*{% endif %}
 
+          # --- Planeringar (Unit of Learning) — vad de jobbar med nu --------
+          - type: custom:mushroom-title-card
+            title: Planeringar
+            subtitle: vad de jobbar med nu
+
+          - type: markdown
+            card_mod:
+              style: "ha-card { border-left: 4px solid #0a84ff; }"
+            content: |
+              {%- set p = state_attr('sensor.anna_plans','plans') or [] %}
+              ### 🧒 Anna{% if p %} · {{ p | length }} pågående{% endif %}
+
+              {%- if p %}
+              {%- for x in p %}
+              - **{{ x.subjects | join(', ') or 'Planering' }}** — {{ x.title }}{% if x.state == 'notstarted' %} _(ej startad)_{% endif %}
+              {%- endfor %}
+              {%- else %}
+              *Inga aktiva planeringar.*
+              {%- endif %}
+
+          - type: markdown
+            card_mod:
+              style: "ha-card { border-left: 4px solid #bf5af2; }"
+            content: |
+              {%- set p = state_attr('sensor.bo_plans','plans') or [] %}
+              ### 🧒 Bo{% if p %} · {{ p | length }} pågående{% endif %}
+
+              {%- if p %}
+              {%- for x in p %}
+              - **{{ x.subjects | join(', ') or 'Planering' }}** — {{ x.title }}{% if x.state == 'notstarted' %} _(ej startad)_{% endif %}
+              {%- endfor %}
+              {%- else %}
+              *Inga aktiva planeringar.*
+              {%- endif %}
+
+          - type: markdown
+            card_mod:
+              style: "ha-card { border-left: 4px solid #40c8e0; }"
+            content: |
+              {%- set p = state_attr('sensor.lisa_plans','plans') or [] %}
+              ### 🧒 Lisa{% if p %} · {{ p | length }} pågående{% endif %}
+
+              {%- if p %}
+              {%- for x in p %}
+              - **{{ x.subjects | join(', ') or 'Planering' }}** — {{ x.title }}{% if x.state == 'notstarted' %} _(ej startad)_{% endif %}
+              {%- endfor %}
+              {%- else %}
+              *Inga aktiva planeringar.*
+              {%- endif %}
+
           # --- Skolmat (kräver "Hämta skolmat" i inställningarna) -----------
           - type: custom:mushroom-title-card
             title: Skolmat imorgon
@@ -156,7 +206,7 @@ views:
             subtitle: "{{ states('sensor.infomentor_school_news') }} st"
 
           - type: markdown
-            content: >-
-              {% for n in (state_attr('sensor.infomentor_school_news','news') or [])[:5] %}- **{{ n.title }}**
-                *{{ n.published }}{% if n.by %} · {{ n.by }}{% endif %}*
-              {% endfor %}
+            content: |
+              {%- for n in (state_attr('sensor.infomentor_school_news','news') or [])[:5] %}
+              - **{{ n.title }}** — *{{ n.published }}{% if n.by %} · {{ n.by }}{% endif %}*
+              {%- endfor %}

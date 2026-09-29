@@ -312,6 +312,36 @@ def normalize_learnlog(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def normalize_plans(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """uolv2/GetUols -> planeringar (Unit of Learning), icke-avslutade först.
+
+    `subjects` i svaret är en id-lista; vi översätter den till namn så att
+    dashboarden kan visa ämnet direkt.
+    """
+    subjects = {
+        str(subject.get("id")): str(subject.get("name") or "")
+        for subject in raw.get("subjects") or []
+        if isinstance(subject, Mapping)
+    }
+    out: list[dict[str, Any]] = []
+    for item in raw.get("uols") or []:
+        if not isinstance(item, Mapping):
+            continue
+        out.append(
+            {
+                "id": str(item.get("id") or ""),
+                "title": str(item.get("title") or "").strip(),
+                "subjects": [
+                    name for sid in item.get("subjects") or [] if (name := subjects.get(str(sid)))
+                ],
+                "state": str(item.get("state") or ""),
+            }
+        )
+    # Stabil sortering: aktiva (och notstarted) före avslutade.
+    out.sort(key=lambda plan: plan["state"] == "finished")
+    return out
+
+
 def parse_mateo_unit(value: Any) -> str | None:
     """Tar emot en Mateo-URL eller ett id och returnerar enhets-id:t.
 
