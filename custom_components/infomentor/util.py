@@ -95,6 +95,25 @@ def hidden_input(html: str, name: str) -> str:
     return match.group(1) if match else ""
 
 
+def hidden_inputs(html: str) -> dict[str, str]:
+    """Alla dolda fält i formuläret, namn → värde.
+
+    Login-sidan bäddar in hela kommun-/IdP-listan som dolda fält
+    (`login_ascx$IdpListRepeater$ctlN$url` m.fl.). En webbläsare skickar med dem —
+    därför gör vi också det, annars kan sessionen hamna hos fel kommun.
+    """
+    fields: dict[str, str] = {}
+    for tag in _INPUT_RE.findall(html):
+        type_match = _TYPE_RE.search(tag)
+        if (type_match.group(1) if type_match else "text").lower() != "hidden":
+            continue
+        name_match = _NAME_RE.search(tag)
+        value_match = re.search(r'value="([^"]*)"', tag, re.IGNORECASE)
+        if name_match:
+            fields[name_match.group(1)] = decode_html(value_match.group(1)) if value_match else ""
+    return fields
+
+
 def extract_oauth_token(html: str) -> str | None:
     match = OAUTH_RE.search(html)
     return decode_html(match.group(1)) if match else None

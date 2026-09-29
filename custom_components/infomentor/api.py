@@ -23,6 +23,7 @@ from .util import (
     extract_pupils,
     find_login_fields,
     hidden_input,
+    hidden_inputs,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -169,16 +170,19 @@ class InfomentorApi:
             raise InvalidAuth("nådde aldrig inloggningsformuläret")
 
         fields = find_login_fields(html)
-        form = {
-            fields["username"]: self._username,
-            fields["password"]: self._password,
-            fields["submit"]: "Logga in",
-            "__VIEWSTATE": view_state,
-            "__VIEWSTATEGENERATOR": hidden_input(html, "__VIEWSTATEGENERATOR"),
-            "__EVENTVALIDATION": hidden_input(html, "__EVENTVALIDATION"),
-            "__EVENTTARGET": "",
-            "__EVENTARGUMENT": "",
-        }
+        # Skicka med ALLA dolda fält precis som en webbläsare gör. Login-sidan
+        # bäddar in hela kommun-/IdP-listan i dem; utan dem kan sessionen hamna
+        # hos fel kommun och API-anropen svarar 302 (se #1/#2).
+        form = hidden_inputs(html)
+        idp_count = sum(1 for key in form if "IdpListRepeater" in key and key.endswith("$url"))
+        if idp_count:
+            _LOGGER.debug("Inloggningsformuläret innehåller %d kommun-/IdP-val", idp_count)
+        form[fields["username"]] = self._username
+        form[fields["password"]] = self._password
+        if fields.get("submit"):
+            form[fields["submit"]] = "Logga in"
+        form["__EVENTTARGET"] = ""
+        form["__EVENTARGUMENT"] = ""
         _, html = await self._follow(MENTOR_LOGIN, method="POST", data=form)
 
         oauth = extract_oauth_token(html)

@@ -68,6 +68,8 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
     ) -> None:
         self.entry = entry
         self.api = InfomentorApi(session, entry.data["username"], entry.data["password"])
+        self._ok_calls = 0
+        self._auth_skips = 0
         minutes = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MIN))
         super().__init__(
             hass,
@@ -80,15 +82,16 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
     async def _async_update_data(self) -> InfomentorData:
         pupils = await self._login()
         try:
-            return await self._fetch_all(pupils)
+            return await self._fetch_all(pupils, strict=True)
         except InvalidAuth as err:
             # Sessionen kan svalna direkt efter inloggningen (nod-affinitet eller
             # kort livstid). Logga in en gång till och försök om innan vi besvärar
-            # användaren med en reauth.
+            # användaren med en reauth. På andra försöket hoppar vi över enskilda
+            # endpoints som avvisas i stället för att fälla allt.
             _LOGGER.warning("InfoMentor: %s – loggar in igen och försöker om", err)
             pupils = await self._login()
             try:
-                return await self._fetch_all(pupils)
+                return await self._fetch_all(pupils, strict=False)
             except InvalidAuth as err2:
                 # Inloggningen FUNGERAR men hubben avvisar anropen. Då är det inte
                 # fel lösenord – låt HA försöka igen i stället för att tjata om
@@ -106,8 +109,12 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
         except CannotConnect as err:
             raise UpdateFailed(f"Kunde inte nå InfoMentor: {err}") from err
 
-    async def _fetch_all(self, pupils: list[dict[str, Any]]) -> InfomentorData:
+    async def _fetch_all(
+        self, pupils: list[dict[str, Any]], *, strict: bool = True
+    ) -> InfomentorData:
         data = InfomentorData()
+        self._ok_calls = 0
+        self._auth_skips = 0
         child_by_id: dict[str, str] = {str(p.get("id")): str(p.get("name")) for p in pupils}
 
         for pupil in pupils:
@@ -127,16 +134,24 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
             # Enskilda endpoints får fallera utan att fälla hela uppdateringen
             # (t.ex. en kommun där en endpoint svarar oväntat).
             lessons = normalize_lessons(
-                await self._safe(f"schema ({who})", self.api.async_lessons(pupil), [])
+                await self._safe(
+                    f"schema ({who})", self.api.async_lessons(pupil), [], strict=strict
+                )
             )
             calendar = normalize_calendar(
-                await self._safe(f"kalender ({who})", self.api.async_calendar(pupil), [])
+                await self._safe(
+                    f"kalender ({who})", self.api.async_calendar(pupil), [], strict=strict
+                )
             )
             tasks = normalize_tasks(
-                await self._safe(f"uppgifter ({who})", self.api.async_tasks(pupil), [])
+                await self._safe(
+                    f"uppgifter ({who})", self.api.async_tasks(pupil), [], strict=strict
+                )
             )
             attendance = normalize_attendance(
-                await self._safe(f"närvaro ({who})", self.api.async_attendance(pupil), {})
+                await self._safe(
+                    f"närvaro ({who})", self.api.async_attendance(pupil), {}, strict=strict
+                )
             )
 
             data.pupils.append(
@@ -152,9 +167,16 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                 )
             )
 
-        notifications = await self._safe("notiser", self.api.async_notifications(), [])
+        notifications = await self._safe(
+            "notiser", self.api.async_notifications(), [], strict=strict
+        )
         data.notifications = normalize_notifications(notifications, child_by_id)
-        data.news = await self._safe("nyheter", self.api.async_news(), [])
+        data.news = await self._safe("nyheter", self.api.async_news(), [], strict=strict)
+
+        # Icke-strikt läge (efter en ny inloggning): om INGET anrop gick igenom
+        # är sessionen ändå död — säg till i stället för att visa tom data.
+        if not strict and self._ok_calls == 0 and self._auth_skips:
+            raise InvalidAuth("inga hubb-anrop accepterades efter ny inloggning")
 
         if self.entry.options.get(CONF_ENABLE_LUNCH) and (
             unit := self.entry.options.get(CONF_MATEO_UNIT)
@@ -165,17 +187,26 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
 
         return data
 
-    async def _safe(self, label: str, awaitable, default):
+    async def _safe(self, label: str, awaitable, default, *, strict: bool = True):
         """Hämtar en endpoint; loggar och hoppar över vid endpoint-fel.
 
-        InvalidAuth (död session) och CannotConnect (nere) får bubbla upp — de
-        hanteras (med ny inloggning) högre upp. Ett oväntat endpointsvar ska inte
-        fälla hela uppdateringen.
+        I strikt läge (första försöket) bubblar InvalidAuth upp så vi kan logga in
+        igen. I icke-strikt läge (efter ny inloggning) hoppas enskilda avvisade
+        endpoints över — men går inget alls igenom fångas det av anroparen.
+        CannotConnect bubblar alltid upp (värden är nere).
         """
         try:
-            return await awaitable
-        except (InvalidAuth, CannotConnect):
+            value = await awaitable
+        except CannotConnect:
             raise
+        except InvalidAuth as err:
+            if strict:
+                raise
+            _LOGGER.warning("InfoMentor: %s avvisades (%s) – hoppar över", label, err)
+            self._auth_skips += 1
+            return default
         except (ApiError, InfomentorError) as err:
             _LOGGER.warning("InfoMentor: kunde inte hämta %s – hoppar över (%s)", label, err)
             return default
+        self._ok_calls += 1
+        return value

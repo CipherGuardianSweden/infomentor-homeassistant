@@ -103,6 +103,21 @@ class TestHtmlParsing(unittest.TestCase):
         self.assertEqual(util.extract_oauth_token(html), "C0MB&SLg")
         self.assertIsNone(util.extract_oauth_token("<html></html>"))
 
+    def test_hidden_inputs_collects_every_hidden_field(self):
+        html = (
+            '<input type="hidden" name="__VIEWSTATE" value="VS" />'
+            '<input type="hidden" name="login_ascx$IdpListRepeater$ctl1$url" value="https://a" />'
+            '<input type="hidden" name="login_ascx$IdpListRepeater$ctl1$number" value="7" />'
+            '<input type="text" name="login_ascx$txtNotandanafn" value="" />'
+            '<input type="hidden" name="x" value="A&amp;B" />'
+        )
+        fields = util.hidden_inputs(html)
+        self.assertEqual(fields["__VIEWSTATE"], "VS")
+        self.assertEqual(fields["login_ascx$IdpListRepeater$ctl1$url"], "https://a")
+        self.assertEqual(fields["login_ascx$IdpListRepeater$ctl1$number"], "7")
+        self.assertEqual(fields["x"], "A&B")  # HTML-avkodat
+        self.assertNotIn("login_ascx$txtNotandanafn", fields)  # inte hidden
+
     def test_find_login_fields(self):
         fields = util.find_login_fields(LOGIN_HTML)
         self.assertEqual(fields["username"], "login_ascx$txtNotandanafn")
