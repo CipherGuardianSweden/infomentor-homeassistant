@@ -3,7 +3,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 [![hassfest](https://github.com/c14ym0re/infomentor-homeassistant/actions/workflows/hassfest.yml/badge.svg)](https://github.com/c14ym0re/infomentor-homeassistant/actions/workflows/hassfest.yml)
 [![Tests](https://github.com/c14ym0re/infomentor-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/c14ym0re/infomentor-homeassistant/actions/workflows/tests.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A first-class Home Assistant integration for **InfoMentor** (the Swedish school
 platform, "Mentor" / "InfoMentor Hub"). It signs in with your normal
