@@ -78,13 +78,35 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
         )
 
     async def _async_update_data(self) -> InfomentorData:
+        pupils = await self._login()
         try:
-            pupils = await self.api.async_login()
+            return await self._fetch_all(pupils)
+        except InvalidAuth as err:
+            # Sessionen kan svalna direkt efter inloggningen (nod-affinitet eller
+            # kort livstid). Logga in en gång till och försök om innan vi besvärar
+            # användaren med en reauth.
+            _LOGGER.warning("InfoMentor: %s – loggar in igen och försöker om", err)
+            pupils = await self._login()
+            try:
+                return await self._fetch_all(pupils)
+            except InvalidAuth as err2:
+                # Inloggningen FUNGERAR men hubben avvisar anropen. Då är det inte
+                # fel lösenord – låt HA försöka igen i stället för att tjata om
+                # reauth (som ändå skulle lyckas och falla igen).
+                raise UpdateFailed(f"Hubben avvisade anropen: {err2}") from err2
+            except CannotConnect as err2:
+                raise UpdateFailed(f"Kunde inte nå InfoMentor: {err2}") from err2
+
+    async def _login(self) -> list[dict[str, Any]]:
+        """Logga in. Fel uppgifter → reauth; nere → försök igen."""
+        try:
+            return await self.api.async_login()
         except InvalidAuth as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except CannotConnect as err:
             raise UpdateFailed(f"Kunde inte nå InfoMentor: {err}") from err
 
+    async def _fetch_all(self, pupils: list[dict[str, Any]]) -> InfomentorData:
         data = InfomentorData()
         child_by_id: dict[str, str] = {str(p.get("id")): str(p.get("name")) for p in pupils}
 
@@ -95,10 +117,10 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
             # Själva barnbytet måste lyckas — annars blir allt fel.
             try:
                 await self.api.async_switch_pupil(pupil)
-            except InvalidAuth as err:
-                raise ConfigEntryAuthFailed(str(err)) from err
-            except CannotConnect as err:
-                raise UpdateFailed(f"Kunde inte nå InfoMentor: {err}") from err
+            except InvalidAuth:
+                raise
+            except CannotConnect:
+                raise
             except InfomentorError as err:
                 raise UpdateFailed(f"Kunde inte byta till {who}: {err}") from err
 
@@ -147,7 +169,8 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
         """Hämtar en endpoint; loggar och hoppar över vid endpoint-fel.
 
         InvalidAuth (död session) och CannotConnect (nere) får bubbla upp — de
-        ska ge reauth respektive nytt försök. Ett oväntat endpointsvar ska inte.
+        hanteras (med ny inloggning) högre upp. Ett oväntat endpointsvar ska inte
+        fälla hela uppdateringen.
         """
         try:
             return await awaitable

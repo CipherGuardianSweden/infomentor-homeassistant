@@ -119,6 +119,23 @@ face of it.
 - **No entities** – make sure the account actually has children with an active
   placement.
 
+## Feedback & bug reports
+
+This is a fresh **beta** integration, and bug reports directly shape the next
+release — please report anything odd, even small things.
+
+- 🐛 **[Open a bug report](https://github.com/c14ym0re/infomentor-homeassistant/issues/new?template=bug_report.yml)**
+  — the form asks for exactly what we need (and takes a minute).
+- ✨ **[Suggest an idea](https://github.com/c14ym0re/infomentor-homeassistant/issues/new?template=feature_request.yml)**
+- 📖 **[Swedish guide with examples and dashboards](examples/sa-funkar-det.md)**
+
+**What helps most:**
+1. **Diagnostics** — Settings → Devices & Services → InfoMentor → ⋮ →
+   *Download diagnostics* (sensitive fields are already redacted). Attach the file.
+2. **Log lines** mentioning `infomentor` — Settings → System → Logs.
+3. **Which municipality** your school is in. Behaviour differs between them, and
+   that is exactly the kind of surprise we want to find.
+
 ## Credits
 
 - [kolplattformen/skolplattformen](https://github.com/kolplattformen/skolplattformen)

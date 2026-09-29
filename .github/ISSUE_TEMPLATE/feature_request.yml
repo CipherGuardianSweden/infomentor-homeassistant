@@ -1,0 +1,26 @@
+name: ✨ Idé eller önskemål
+description: Föreslå en förbättring eller ny funktion
+title: "[Idé]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kul att du vill vara med och förbättra! Beskriv gärna *varför* — då är det
+        lättare att hitta en bra lösning.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Din idé
+      description: Vad skulle du vilja kunna göra?
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Varför?
+      description: Vilket problem löser det för dig?
+    validations:
+      required: false

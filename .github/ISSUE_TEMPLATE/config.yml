@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Guide med exempel och dashboards
+    url: https://github.com/c14ym0re/infomentor-homeassistant/blob/main/examples/sa-funkar-det.md
+    about: Så funkar integrationen — automationer, skolpanel och vanliga frågor

@@ -120,6 +120,21 @@ Så importerar du:
 
 ---
 
+## Hittade du en bugg? 🐛
+
+Den här integrationen är ny och i beta — rapporter är jättevälkomna, även små
+saker. Det finns en färdig mall:
+
+👉 **[Skapa en buggrapport](https://github.com/c14ym0re/infomentor-homeassistant/issues/new?template=bug_report.yml)**
+
+Det som hjälper mest:
+
+1. **Diagnostik** — Inställningar → Enheter & tjänster → **InfoMentor** → ⋮ →
+   *Hämta diagnostik* (känsliga uppgifter är redan maskerade). Bifoga filen.
+2. **Loggrader** som nämner `infomentor` — Inställningar → System → Loggar.
+3. **Vilken kommun** skolan ligger i. Beteendet skiljer sig mellan kommuner,
+   och det är precis sådant vi vill hitta.
+
 ## Vanliga frågor
 
 **Kräver det BankID?**
