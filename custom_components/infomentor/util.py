@@ -396,12 +396,19 @@ def normalize_news(raw: Iterable[Mapping[str, Any]], limit: int = 10) -> list[di
     """News/GetNewsList -> senaste nyheterna (nyast först)."""
     items = []
     for item in raw or []:
+        content = strip_html(item.get("content") or "")
         items.append(
             {
                 "id": str(item.get("id") or ""),
                 "title": str(item.get("title") or "").strip(),
                 "published": day_of(item.get("publishedDate")),
                 "by": str(item.get("publishedBy") or ""),
+                "text": content[:500] + (" …" if len(content) > 300 else ""),
+                "attachments": [
+                    str(a.get("title"))
+                    for a in item.get("attachments") or []
+                    if isinstance(a, Mapping) and a.get("title")
+                ],
             }
         )
     return sorted(items, key=lambda x: x["published"], reverse=True)[:limit]
