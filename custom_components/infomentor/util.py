@@ -76,6 +76,13 @@ OAUTH_RE = re.compile(r'name="oauth_token"\s+value="([^"]*)"')
 _INPUT_RE = re.compile(r"<input\b[^>]*>", re.IGNORECASE)
 _NAME_RE = re.compile(r'name="([^"]+)"')
 _TYPE_RE = re.compile(r'type="([^"]+)"')
+CALLBACK_RE = re.compile(
+    r'(https?://[^"\'\s<>]*LoginCallback[^"\'\s<>]*)', re.IGNORECASE
+)
+META_REFRESH_RE = re.compile(
+    r'<meta[^>]+http-equiv=["\']refresh["\'][^>]+content=["\'][^;]*;\s*url=([^"\']+)',
+    re.IGNORECASE,
+)
 
 
 def decode_html(value: str) -> str:
@@ -117,6 +124,25 @@ def hidden_inputs(html: str) -> dict[str, str]:
 def extract_oauth_token(html: str) -> str | None:
     match = OAUTH_RE.search(html)
     return decode_html(match.group(1)) if match else None
+
+
+def extract_callback_url(html: str) -> str | None:
+    """Hittar LoginCallback-URL:en i svaret från MENTOR_LOGIN.
+
+    Letar i tur och ordning efter:
+      1. En direkt länk (a href)
+      2. En meta-refresh
+
+    Utan LoginCallback sätts aldrig IMHome-cookien, och då avvisar hub-endpoints
+    alla anrop med 302 → Login. Se api.async_login().
+    """
+    match = CALLBACK_RE.search(html)
+    if match:
+        return decode_html(match.group(1))
+    match = META_REFRESH_RE.search(html)
+    if match:
+        return decode_html(match.group(1))
+    return None
 
 
 def find_login_fields(html: str) -> dict[str, str]:
@@ -419,7 +445,8 @@ def normalize_news(raw: Iterable[Mapping[str, Any]], limit: int = 10) -> list[di
                 "title": str(item.get("title") or "").strip(),
                 "published": day_of(item.get("publishedDate")),
                 "by": str(item.get("publishedBy") or ""),
-                "text": content[:500] + (" …" if len(content) > 300 else ""),
+                "text": content[:500] + (" …" if len(content) > 500 else ""),
+                "text_full": content,
                 "attachments": [
                     str(a.get("title"))
                     for a in item.get("attachments") or []
