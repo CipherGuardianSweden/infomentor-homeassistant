@@ -277,6 +277,70 @@ def normalize_attendance(raw: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def strip_html(value: Any) -> str:
+    """Gör om enkel HTML till läsbar text."""
+    text = _TAG_RE.sub(" ", str(value or ""))
+    text = decode_html(text)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+
+def normalize_learnlog(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """learnlog/appData -> lärlogg-poster (veckobrev m.m.), nyast först."""
+    out: list[dict[str, Any]] = []
+    for entry in raw.get("entries") or []:
+        if not isinstance(entry, Mapping):
+            continue
+        attachments = [
+            str(a.get("fileName"))
+            for a in entry.get("attachments") or []
+            if isinstance(a, Mapping) and a.get("fileName")
+        ]
+        out.append(
+            {
+                "id": str(entry.get("id") or ""),
+                "title": str(entry.get("title") or "").strip(),
+                "text": strip_html(entry.get("text")),
+                "subject": str(entry.get("subjectsCoursesDisplayString") or ""),
+                "group": str(entry.get("groupName") or ""),
+                "modified": str(entry.get("lastModifiedOn") or ""),
+                "attachments": attachments,
+            }
+        )
+    return out
+
+
+def parse_mateo_unit(value: Any) -> str | None:
+    """Tar emot en Mateo-URL eller ett id och returnerar enhets-id:t.
+
+    T.ex. 'https://meny.mateo.se/kommun/123' -> '172', '172' -> '172'.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return text
+    match = re.search(r"/(\d+)(?:[/?#]|$)", text)
+    return match.group(1) if match else None
+
+
+def normalize_news(raw: Iterable[Mapping[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
+    """News/GetNewsList -> senaste nyheterna (nyast först)."""
+    items = []
+    for item in raw or []:
+        items.append(
+            {
+                "id": str(item.get("id") or ""),
+                "title": str(item.get("title") or "").strip(),
+                "published": day_of(item.get("publishedDate")),
+                "by": str(item.get("publishedBy") or ""),
+            }
+        )
+    return sorted(items, key=lambda x: x["published"], reverse=True)[:limit]
+
+
 def parse_mateo_days(payload: Iterable[Mapping[str, Any]]) -> dict[str, list[dict[str, str]]]:
     """Mateo api/v1/days -> { 'YYYY-MM-DD': [{label, dish}] }."""
     menu: dict[str, list[dict[str, str]]] = {}

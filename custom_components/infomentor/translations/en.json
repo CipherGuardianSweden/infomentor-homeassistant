@@ -45,7 +45,7 @@
         "data_description": {
           "scan_interval": "How often to poll InfoMentor (5–180 minutes).",
           "enable_lunch": "Also download the school lunch menu from Mateo.",
-          "mateo_unit_id": "The numeric unit id from the Mateo menu link on meny.mateo.se.",
+          "mateo_unit_id": "Paste the Mateo menu link (e.g. https://meny.mateo.se/kommun/123) or the numeric unit id.",
           "names": "One per line: 'Lastname, Firstname = Nickname'."
         }
       }
@@ -53,13 +53,29 @@
   },
   "entity": {
     "sensor": {
-      "school_day": {"name": "School day"},
-      "assignments": {"name": "Assignments due"},
-      "next_event": {"name": "Next event"},
-      "lunch": {"name": "School lunch"}
+      "school_day": {
+        "name": "School day"
+      },
+      "assignments": {
+        "name": "Assignments due"
+      },
+      "next_event": {
+        "name": "Next event"
+      },
+      "lunch": {
+        "name": "School lunch"
+      },
+      "learnlog": {
+        "name": "Weekly letter"
+      },
+      "news": {
+        "name": "School news"
+      }
     },
     "binary_sensor": {
-      "pe_next_school_day": {"name": "PE next school day"}
+      "pe_next_school_day": {
+        "name": "PE next school day"
+      }
     }
   }
 }

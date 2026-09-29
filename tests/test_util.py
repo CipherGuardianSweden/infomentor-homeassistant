@@ -200,6 +200,48 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(menu["2026-09-29"][0], {"label": "Dagens rätt", "dish": "Torsk"})
 
 
+class TestLearnlogAndNews(unittest.TestCase):
+    def test_strip_html(self):
+        self.assertEqual(util.strip_html("<p>Hej &amp; hej</p><br/>då"), "Hej & hej då")
+        self.assertEqual(util.strip_html(None), "")
+
+    def test_parse_mateo_unit(self):
+        self.assertEqual(util.parse_mateo_unit("https://meny.mateo.se/kommun/123"), "123")
+        self.assertEqual(util.parse_mateo_unit("172"), "172")
+        self.assertEqual(util.parse_mateo_unit("https://meny.mateo.se/kommun/123?x=1"), "123")
+        self.assertIsNone(util.parse_mateo_unit("ingen-url"))
+        self.assertIsNone(util.parse_mateo_unit(""))
+
+    def test_normalize_learnlog(self):
+        raw = {
+            "entries": [
+                {
+                    "id": 1,
+                    "title": " Vecka 40 ",
+                    "text": "<p>Hej 7D!</p>",
+                    "subjectsCoursesDisplayString": "Idrott och hälsa",
+                    "lastModifiedOn": "den 31 augusti",
+                    "attachments": [{"fileName": "plan.docx"}],
+                }
+            ]
+        }
+        out = util.normalize_learnlog(raw)
+        self.assertEqual(out[0]["title"], "Vecka 40")
+        self.assertEqual(out[0]["text"], "Hej 7D!")
+        self.assertEqual(out[0]["subject"], "Idrott och hälsa")
+        self.assertEqual(out[0]["attachments"], ["plan.docx"])
+        self.assertEqual(util.normalize_learnlog({}), [])
+
+    def test_normalize_news_sorts_and_limits(self):
+        raw = [
+            {"id": 1, "title": "Äldre", "publishedDate": "2026-09-01"},
+            {"id": 2, "title": "Nyast", "publishedDate": "2026-09-28"},
+        ]
+        out = util.normalize_news(raw, limit=1)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["title"], "Nyast")
+
+
 class TestDerivation(unittest.TestCase):
     def setUp(self):
         self.lessons = util.normalize_lessons(

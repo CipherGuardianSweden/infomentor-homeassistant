@@ -37,6 +37,8 @@ async def async_setup_entry(
             entities.append(SchoolDaySensor(coordinator, entry, pupil))
             entities.append(AssignmentsSensor(coordinator, entry, pupil))
             entities.append(NextEventSensor(coordinator, entry, pupil))
+            entities.append(LearnlogSensor(coordinator, entry, pupil))
+        entities.append(NewsSensor(coordinator, entry))
         if data.lunch_unit:
             entities.append(LunchSensor(coordinator, entry))
     async_add_entities(entities)
@@ -151,6 +153,74 @@ class NextEventSensor(_PupilSensor):
         if event is None:
             return {}
         return {"date": event["start"][:10], "subjects": event["subjects"]}
+
+
+class LearnlogSensor(_PupilSensor):
+    """Lärloggen — veckobrev och annat läraren publicerar.
+
+    State är den senaste postens rubrik; hela listan (rubrik, ämne, datum och
+    text) ligger som attribut så den går att visa i en dashboard eller skicka.
+    """
+
+    _attr_translation_key = "learnlog"
+    _attr_icon = "mdi:email-newsletter"
+
+    def __init__(self, coordinator, entry, pupil) -> None:
+        super().__init__(coordinator, entry, pupil, "learnlog")
+
+    @property
+    def native_value(self) -> str | None:
+        pupil = self.pupil
+        if pupil is None or not pupil.learnlog:
+            return None
+        return pupil.learnlog[0]["title"] or None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        pupil = self.pupil
+        if pupil is None:
+            return {}
+        return {
+            "count": len(pupil.learnlog),
+            "entries": [
+                {
+                    "title": e["title"],
+                    "subject": e["subject"],
+                    "modified": e["modified"],
+                    "text": e["text"],
+                    "attachments": e["attachments"],
+                }
+                for e in pupil.learnlog[:5]
+            ],
+        }
+
+
+class NewsSensor(InfomentorHubEntity, SensorEntity):
+    """Skolans nyheter — antal, med de senaste som attribut."""
+
+    _attr_should_poll = False
+    _attr_translation_key = "news"
+    _attr_icon = "mdi:newspaper-variant-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "st"
+
+    def __init__(self, coordinator: InfomentorCoordinator, entry: ConfigEntry) -> None:
+        InfomentorHubEntity.__init__(self, coordinator, entry, "news")
+
+    @property
+    def native_value(self) -> int | None:
+        data = self.coordinator.data
+        return len(data.news) if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        if data is None:
+            return {}
+        return {
+            "latest": data.news[0]["title"] if data.news else None,
+            "news": data.news,
+        }
 
 
 class LunchSensor(InfomentorHubEntity, SensorEntity):

@@ -34,6 +34,7 @@ async def async_get_config_entry_diagnostics(
                     "calendar": len(pupil.calendar),
                     "tasks": len(pupil.tasks),
                     "tasks_due_7d": len(tasks_due(pupil.tasks, today, 7)),
+                    "learnlog": len(pupil.learnlog),
                     "next_school_day": day,
                     "school_day": "–".join(school_day_bounds(lessons_on(pupil.lessons, day)))
                     if day

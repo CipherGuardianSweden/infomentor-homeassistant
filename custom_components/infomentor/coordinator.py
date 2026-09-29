@@ -26,10 +26,13 @@ from .util import (
     display_name,
     normalize_attendance,
     normalize_calendar,
+    normalize_learnlog,
     normalize_lessons,
+    normalize_news,
     normalize_notifications,
     normalize_tasks,
     parse_mateo_days,
+    parse_mateo_unit,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +50,7 @@ class PupilData:
     calendar: list[dict[str, Any]] = field(default_factory=list)
     tasks: list[dict[str, Any]] = field(default_factory=list)
     attendance: dict[str, Any] = field(default_factory=dict)
+    learnlog: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -153,6 +157,11 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                     f"närvaro ({who})", self.api.async_attendance(pupil), {}, strict=strict
                 )
             )
+            learnlog = normalize_learnlog(
+                await self._safe(
+                    f"lärlogg ({who})", self.api.async_learnlog(pupil), {}, strict=strict
+                )
+            )
 
             data.pupils.append(
                 PupilData(
@@ -164,6 +173,7 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                     calendar=calendar,
                     tasks=tasks,
                     attendance=attendance,
+                    learnlog=learnlog,
                 )
             )
 
@@ -171,7 +181,9 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
             "notiser", self.api.async_notifications(), [], strict=strict
         )
         data.notifications = normalize_notifications(notifications, child_by_id)
-        data.news = await self._safe("nyheter", self.api.async_news(), [], strict=strict)
+        data.news = normalize_news(
+            await self._safe("nyheter", self.api.async_news(), [], strict=strict)
+        )
 
         # Icke-strikt läge (efter en ny inloggning): om INGET anrop gick igenom
         # är sessionen ändå död — säg till i stället för att visa tom data.
@@ -179,11 +191,11 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
             raise InvalidAuth("inga hubb-anrop accepterades efter ny inloggning")
 
         if self.entry.options.get(CONF_ENABLE_LUNCH) and (
-            unit := self.entry.options.get(CONF_MATEO_UNIT)
+            unit := parse_mateo_unit(self.entry.options.get(CONF_MATEO_UNIT))
         ):
-            days = await self._safe("skolmat", self.api.async_lunch(str(unit)), [])
+            days = await self._safe("skolmat", self.api.async_lunch(unit), [])
             data.lunch = parse_mateo_days(days)
-            data.lunch_unit = str(unit)
+            data.lunch_unit = unit
 
         return data
 

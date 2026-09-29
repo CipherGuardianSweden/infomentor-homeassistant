@@ -237,6 +237,11 @@ class InfomentorApi:
         data = await self._post_hub("/attendance/attendance/appData", {})
         return data if isinstance(data, dict) else {}
 
+    async def async_learnlog(self, pupil: MappingLike) -> dict[str, Any]:
+        """Lärloggen (veckobrev m.m.) för valt barn."""
+        data = await self._post_hub("/learnlog/learnlog/appData", {})
+        return data if isinstance(data, dict) else {}
+
     async def async_notifications(self) -> list[dict[str, Any]]:
         data = await self._post_hub("/NotificationApp/NotificationApp/GetNotifications", {})
         return data.get("notifications", []) if isinstance(data, dict) else []
