@@ -71,6 +71,9 @@
       "plans": {
         "name": "Plans"
       },
+      "attendance": {
+        "name": "Attendance"
+      },
       "news": {
         "name": "School news"
       }
@@ -78,6 +81,11 @@
     "binary_sensor": {
       "pe_next_school_day": {
         "name": "PE next school day"
+      }
+    },
+    "calendar": {
+      "timetable": {
+        "name": "Timetable"
       }
     }
   }
