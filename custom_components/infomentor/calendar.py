@@ -21,7 +21,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Skapa en kalender per barn."""
     coordinator: InfomentorCoordinator = entry.runtime_data.coordinator
     if coordinator.data is not None:
         async_add_entities(
@@ -31,11 +30,7 @@ async def async_setup_entry(
 
 
 class InfoMentorCalendar(InfomentorPupilEntity, CalendarEntity):
-    """Veckoschema som kalender.
-
-    Varje lektion blir en CalendarEvent. Raster (Lunch, Omb) är redan
-    bortfiltrerade av normalize_lessons().
-    """
+    """Veckoschema som kalender."""
 
     _attr_should_poll = False
     _attr_translation_key = "timetable"
@@ -60,7 +55,6 @@ class InfoMentorCalendar(InfomentorPupilEntity, CalendarEntity):
 
     @property
     def event(self) -> CalendarEvent | None:
-        """Nästa kommande lektion."""
         pupil = self.pupil
         if pupil is None or not pupil.lessons:
             return None
@@ -77,7 +71,6 @@ class InfoMentorCalendar(InfomentorPupilEntity, CalendarEntity):
         start_date: datetime,
         end_date: datetime,
     ) -> list[CalendarEvent]:
-        """Alla lektioner inom tidsintervallet."""
         pupil = self.pupil
         if pupil is None:
             return []
