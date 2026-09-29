@@ -125,6 +125,41 @@ views:
             icon: mdi:calendar-star
             color: purple
 
+      # --- Veckobrev (lärloggen) — full bredd, ett kort per barn ----------
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: "📬 Veckobrev"
+            icon: mdi:email-newsletter
+          - type: markdown
+            content: >-
+              {% set e = (state_attr('sensor.anna_weekly_letter','entries') or []) %}### 🧒 Anna{% if e %} · {{ e[0].title }}{% endif %}
+              {% if e %}*{{ e[0].modified }}*{% if e[0].subject %} · {{ e[0].subject }}{% endif %}
+
+              {{ e[0].text[:600] }}{% if e[0].text | length > 600 %} …{% endif %}
+              {% if e[0].attachments %}
+              📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
+              *Inget veckobrev ännu.*{% endif %}
+          - type: markdown
+            content: >-
+              {% set e = (state_attr('sensor.bo_weekly_letter','entries') or []) %}### 🧒 Bo{% if e %} · {{ e[0].title }}{% endif %}
+              {% if e %}*{{ e[0].modified }}*{% if e[0].subject %} · {{ e[0].subject }}{% endif %}
+
+              {{ e[0].text[:600] }}{% if e[0].text | length > 600 %} …{% endif %}
+              {% if e[0].attachments %}
+              📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
+              *Inget veckobrev ännu.*{% endif %}
+          - type: markdown
+            content: >-
+              {% set e = (state_attr('sensor.lisa_weekly_letter','entries') or []) %}### 🧒 Lisa{% if e %} · {{ e[0].title }}{% endif %}
+              {% if e %}*{{ e[0].modified }}*{% if e[0].subject %} · {{ e[0].subject }}{% endif %}
+
+              {{ e[0].text[:600] }}{% if e[0].text | length > 600 %} …{% endif %}
+              {% if e[0].attachments %}
+              📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
+              *Inget veckobrev ännu.*{% endif %}
+
       # --- Skolmat + veckans uppgifter (full bredd) ----------------------
       - type: grid
         column_span: 3
@@ -158,4 +193,17 @@ views:
               {% else %}
               **{{ namn }}:** inget inlämnat inom en vecka 🎉
               {% endif %}
+              {% endfor %}
+
+      # --- Nyheter --------------------------------------------------------
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: "📰 Nyheter"
+            icon: mdi:newspaper-variant-outline
+          - type: markdown
+            content: >-
+              {% for n in (state_attr('sensor.infomentor_school_news','news') or [])[:5] %}- **{{ n.title }}**
+                *{{ n.published }}{% if n.by %} · {{ n.by }}{% endif %}*
               {% endfor %}

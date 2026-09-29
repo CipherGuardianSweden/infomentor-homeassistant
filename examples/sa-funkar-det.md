@@ -19,8 +19,28 @@ Ett **device per barn** med:
 | `…_assignments_due` | antal uppgifter som förfaller inom 7 dagar (listan finns som attribut) |
 | `…_next_event` | nästa kalenderhändelse (prov, utflykt …) |
 | `…_pe_next_school_day` | **på** när idrott/gymnastik väntar nästa skoldag |
+| `…_weekly_letter` | **veckobrev** (lärloggen): senaste rubriken + hela texten som attribut |
 
-Plus ett nav‑device med `…_lunch` om du aktiverat skolmat.
+Plus ett nav‑device med `…_school_news` (skolans nyheter) och `…_school_lunch`
+(skolmat, om du aktiverat det).
+
+## Veckobrev 📬
+
+Lärarnas veckobrev ligger i `…_weekly_letter`:
+
+- **state** är senaste brevets rubrik (t.ex. `Vecka 40`)
+- attributet **`entries`** innehåller rubrik, ämne, datum, **hela texten** (HTML
+  avskalad) och bilagornas filnamn
+
+Visa det i en dashboard (färdigt exempel i `skolpanel-mushroom.yaml`):
+
+```yaml
+type: markdown
+content: >-
+  {% set e = (state_attr('sensor.anna_weekly_letter','entries') or []) %}
+  ### 📬 Anna{% if e %} · {{ e[0].title }}{% endif %}
+  {% if e %}{{ e[0].text[:600] }}{% else %}*Inget veckobrev ännu.*{% endif %}
+```
 
 📊 **Färdig dashboard:** [`skolpanel.yaml`](skolpanel.yaml) (inbyggda kort) eller
 [`skolpanel-mushroom.yaml`](skolpanel-mushroom.yaml) (Mushroom) — se avsnittet

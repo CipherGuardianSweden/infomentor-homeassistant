@@ -1,25 +1,32 @@
-# Skolpanel — Mushroom-varianten (kräver HACS-kortet "Mushroom")
+# Skolpanel — Mushroom-varianten (kräver HACS-korten "Mushroom")
 #
 #   Inställningar → Instrumentpaneler → Lägg till instrumentpanel
 #   → "Ny instrumentpanel från grunden" → skapa ("Skola")
 #   → öppna → ⋮ → Redigera instrumentpanel → ⋮ → Rå redigerare → klistra in.
 #
-# Byt entitets-ID:n mot dina egna (suffixen följer HA:s språk).
-# Exemplen använder Anna/Bo/Lisa.
+# Byt entitets-ID:n mot dina egna. Suffixen följer HA:s språk
+# (engelska: _school_day, svenska: _skoldag).
+# Exemplen använder barnen Anna, Bo och Lisa.
+#
+# Färgkoderna (card_mod) kräver HACS-kortet "card-mod" — utan det fungerar allt
+# ändå, men de färgade kanterna uteblir. Varje barn har en färg som följer med
+# från barnkortet till barnets veckobrev, så det syns vem som är vem.
 
 views:
   - type: sections
     title: Skola
     path: skola
     icon: mdi:school
-    max_columns: 3
+    # theme: Apple        # valfritt — sätt ditt eget tema här om du vill
+    max_columns: 1
     sections:
       - type: grid
-        column_span: 3
         cards:
           - type: custom:mushroom-title-card
-            title: "🎒 Skolan"
+            title: Skolan
             subtitle: "{{ now().strftime('%A %-d %B') | capitalize }}"
+
+          # --- Idrottsbanner (visas bara när något barn har idrott) ---------
           - type: conditional
             conditions:
               - condition: or
@@ -35,123 +42,121 @@ views:
                     state: "on"
             card:
               type: custom:mushroom-template-card
-              primary: "🏃 Idrott imorgon"
-              secondary: "Glöm inte idrottskläderna!"
+              primary: Idrott imorgon
+              secondary: Glöm inte idrottskläderna
               icon: mdi:run
               icon_color: red
               multiline_secondary: true
+              card_mod:
+                style: "ha-card { border-left: 4px solid #ff453a; }"
               tap_action:
                 action: none
 
-      - type: grid
-        cards:
+          # --- Ett färgkodat kort per barn ---------------------------------
           - type: custom:mushroom-template-card
             primary: Anna
-            secondary: "Skoldag imorgon {{ states('sensor.anna_school_day') }}"
+            secondary: >-
+              🕗 {{ states('sensor.anna_school_day') }}
+              📚 {{ states('sensor.anna_assignments_due') }} uppgifter · 📅 {{ states('sensor.anna_next_event') }}
             icon: mdi:account-school
             icon_color: "{{ 'red' if is_state('binary_sensor.anna_pe_next_school_day','on') else 'blue' }}"
             multiline_secondary: true
+            card_mod:
+              style: "ha-card { border-left: 4px solid #0a84ff; }"
             tap_action:
               action: more-info
               entity: sensor.anna_school_day
-          - type: custom:mushroom-chips-card
-            alignment: start
-            chips:
-              - type: entity
-                entity: sensor.anna_assignments_due
-                icon: mdi:clipboard-text-outline
-                content_info: state
-              - type: entity
-                entity: sensor.anna_next_event
-                icon: mdi:calendar-star
-                content_info: state
-              - type: entity
-                entity: binary_sensor.anna_pe_next_school_day
-                icon: mdi:run
-                content_info: state
 
-      - type: grid
-        cards:
           - type: custom:mushroom-template-card
             primary: Bo
-            secondary: "Skoldag imorgon {{ states('sensor.bo_school_day') }}"
+            secondary: >-
+              🕗 {{ states('sensor.bo_school_day') }}
+              📚 {{ states('sensor.bo_assignments_due') }} uppgifter · 📅 {{ states('sensor.bo_next_event') }}
             icon: mdi:account-school
             icon_color: "{{ 'red' if is_state('binary_sensor.bo_pe_next_school_day','on') else 'purple' }}"
             multiline_secondary: true
+            card_mod:
+              style: "ha-card { border-left: 4px solid #bf5af2; }"
             tap_action:
               action: more-info
               entity: sensor.bo_school_day
-          - type: custom:mushroom-chips-card
-            alignment: start
-            chips:
-              - type: entity
-                entity: sensor.bo_assignments_due
-                icon: mdi:clipboard-text-outline
-                content_info: state
-              - type: entity
-                entity: sensor.bo_next_event
-                icon: mdi:calendar-star
-                content_info: state
-              - type: entity
-                entity: binary_sensor.bo_pe_next_school_day
-                icon: mdi:run
-                content_info: state
 
-      - type: grid
-        cards:
           - type: custom:mushroom-template-card
             primary: Lisa
-            secondary: "Skoldag imorgon {{ states('sensor.lisa_school_day') }}"
+            secondary: >-
+              🕗 {{ states('sensor.lisa_school_day') }}
+              📚 {{ states('sensor.lisa_assignments_due') }} uppgifter · 📅 {{ states('sensor.lisa_next_event') }}
             icon: mdi:account-school
             icon_color: "{{ 'red' if is_state('binary_sensor.lisa_pe_next_school_day','on') else 'teal' }}"
             multiline_secondary: true
+            card_mod:
+              style: "ha-card { border-left: 4px solid #40c8e0; }"
             tap_action:
               action: more-info
               entity: sensor.lisa_school_day
-          - type: custom:mushroom-chips-card
-            alignment: start
-            chips:
-              - type: entity
-                entity: sensor.lisa_assignments_due
-                icon: mdi:clipboard-text-outline
-                content_info: state
-              - type: entity
-                entity: sensor.lisa_next_event
-                icon: mdi:calendar-star
-                content_info: state
-              - type: entity
-                entity: binary_sensor.lisa_pe_next_school_day
-                icon: mdi:run
-                content_info: state
 
-      - type: grid
-        column_span: 3
-        cards:
-          # OBS: kontrollera entitets-ID:t (…_skolmat om HA är på svenska)
+          # --- Veckobrev (lärloggen) — barnets namn i rubriken --------------
+          - type: custom:mushroom-title-card
+            title: Veckobrev
+            subtitle: senaste från lärarna
+
+          - type: markdown
+            card_mod:
+              style: "ha-card { border-left: 4px solid #0a84ff; }"
+            content: >-
+              {% set e = (state_attr('sensor.anna_weekly_letter','entries') or []) %}### 🧒 Anna{% if e %} · {{ e[0].title }}{% endif %}
+              {% if e %}*{{ e[0].modified }}*{% if e[0].subject %} · {{ e[0].subject }}{% endif %}
+
+              {{ e[0].text[:600] }}{% if e[0].text | length > 600 %} …{% endif %}
+              {% if e[0].attachments %}
+              📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
+              *Inget veckobrev ännu.*{% endif %}
+
+          - type: markdown
+            card_mod:
+              style: "ha-card { border-left: 4px solid #bf5af2; }"
+            content: >-
+              {% set e = (state_attr('sensor.bo_weekly_letter','entries') or []) %}### 🧒 Bo{% if e %} · {{ e[0].title }}{% endif %}
+              {% if e %}*{{ e[0].modified }}*{% if e[0].subject %} · {{ e[0].subject }}{% endif %}
+
+              {{ e[0].text[:600] }}{% if e[0].text | length > 600 %} …{% endif %}
+              {% if e[0].attachments %}
+              📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
+              *Inget veckobrev ännu.*{% endif %}
+
+          - type: markdown
+            card_mod:
+              style: "ha-card { border-left: 4px solid #40c8e0; }"
+            content: >-
+              {% set e = (state_attr('sensor.lisa_weekly_letter','entries') or []) %}### 🧒 Lisa{% if e %} · {{ e[0].title }}{% endif %}
+              {% if e %}*{{ e[0].modified }}*{% if e[0].subject %} · {{ e[0].subject }}{% endif %}
+
+              {{ e[0].text[:600] }}{% if e[0].text | length > 600 %} …{% endif %}
+              {% if e[0].attachments %}
+              📎 {{ e[0].attachments | join(', ') }}{% endif %}{% else %}
+              *Inget veckobrev ännu.*{% endif %}
+
+          # --- Skolmat (kräver "Hämta skolmat" i inställningarna) -----------
+          - type: custom:mushroom-title-card
+            title: Skolmat imorgon
+            subtitle: "{{ state_attr('sensor.infomentor_school_lunch','date') }}"
+
           - type: custom:mushroom-template-card
-            primary: "🍽️ Skolmat imorgon"
-            secondary: "{{ (state_attr('sensor.infomentor_school_lunch','dishes') or []) | map(attribute='dish') | join(' · ') }}"
+            primary: Dagens meny
+            secondary: "{{ (state_attr('sensor.infomentor_school_lunch','dishes') or []) | map(attribute='dish') | join('  ·  ') }}"
             icon: mdi:silverware-fork-knife
             icon_color: green
             multiline_secondary: true
             tap_action:
               action: none
+
+          # --- Nyheter ------------------------------------------------------
+          - type: custom:mushroom-title-card
+            title: Nyheter
+            subtitle: "{{ states('sensor.infomentor_school_news') }} st"
+
           - type: markdown
-            content: |
-              ## 📚 Uppgifter denna vecka
-              {% set barn = {
-                'Anna': 'sensor.anna_assignments_due',
-                'Bo':   'sensor.bo_assignments_due',
-                'Lisa': 'sensor.lisa_assignments_due'
-              } %}
-              {% for namn, sensor in barn.items() %}
-              {% set uppg = state_attr(sensor, 'assignments') or [] %}
-              {% if uppg | count > 0 %}
-              **{{ namn }}**
-              {% for u in uppg %}
-              • {{ u.title }}{% if u.subject %} _{{ u.subject }}_{% endif %} – {{ u.due }}
-              {% endfor %}
-              {% else %}
-              **{{ namn }}:** inget inlämnat inom en vecka 🎉
-              {% endif %}
+            content: >-
+              {% for n in (state_attr('sensor.infomentor_school_news','news') or [])[:5] %}- **{{ n.title }}**
+                *{{ n.published }}{% if n.by %} · {{ n.by }}{% endif %}*
               {% endfor %}
