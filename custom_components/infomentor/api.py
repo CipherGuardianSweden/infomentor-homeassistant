@@ -19,6 +19,7 @@ from yarl import URL
 
 from .const import HUB_BASE, MATEO_API, MENTOR_LOGIN
 from .util import (
+    extract_callback_url,
     extract_oauth_token,
     extract_pupils,
     find_login_fields,
@@ -154,9 +155,17 @@ class InfomentorApi:
     async def async_login(self) -> list[dict[str, Any]]:
         """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect.
 
-        Börjar alltid med en ren cookie-jar. Utan det kan en halv/gammal session
-        göra att vi aldrig hittar inloggningsformuläret vid ett nytt försök
-        ("nådde aldrig inloggningsformuläret").
+        Följer webbläsarens flöde:
+          1. GET /                → oauth_token
+          2. POST MENTOR_LOGIN    → formulärsida
+          3. POST MENTOR_LOGIN    → credentials
+          4. POST MENTOR_LOGIN    → oauth_token igen
+          5. GET  LoginCallback   → IMHome-cookie  ← KRITISKT
+          6. POST isauthenticated → verifiering
+          7. GET /                → startsida med barn
+
+        Utan steg 5 sätts aldrig IMHome-cookien, och då avvisar hub-endpoints
+        alla anrop med 302 → Login (se coordinator-loggen).
         """
         self._session.cookie_jar.clear()
         _, html = await self._follow(f"{HUB_BASE}/")
@@ -189,10 +198,27 @@ class InfomentorApi:
         if oauth:
             _, html = await self._follow(MENTOR_LOGIN, method="POST", data={"oauth_token": oauth})
 
-        await self._follow(
+        # KRITISKT: följ LoginCallback så att IMHome-cookien sätts. Utan detta
+        # steg är sessionen inte giltig för hub-anropen, och alla endpoints
+        # svarar 302 → Login (intermittent "tomma" sensorer).
+        callback = extract_callback_url(html)
+        if callback:
+            _LOGGER.debug("InfoMentor: följer LoginCallback: %s", callback[:120])
+            _, html = await self._follow(callback)
+
+        # Verifiera att IMHome-cookien faktiskt sitter. Utan den är sessionen
+        # halvfärdig och hub-anropen kommer att avvisas.
+        cookie_names = {c.key for c in self._session.cookie_jar}
+        if "IMHome" not in cookie_names:
+            raise InvalidAuth("IMHome-cookien saknas – LoginCallback kördes inte korrekt")
+
+        # Verifiera att sessionen svarar 'true' (webbläsaren får 'true' här).
+        _, auth_body = await self._follow(
             f"{HUB_BASE}/authentication/authentication/isauthenticated/?_={int(time() * 1000)}",
             method="POST",
         )
+        if auth_body.strip().lower() != "true":
+            raise InvalidAuth(f"isauthenticated svarade {auth_body[:80]!r}")
 
         _, root = await self._follow(f"{HUB_BASE}/")
         if "selectedPupilName" not in root:
