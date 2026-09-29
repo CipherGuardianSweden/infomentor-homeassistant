@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import CannotConnect, InfomentorApi, InfomentorError, InvalidAuth
+from .api import ApiError, CannotConnect, InfomentorApi, InfomentorError, InvalidAuth
 from .const import (
     CONF_ENABLE_LUNCH,
     CONF_MATEO_UNIT,
@@ -90,23 +90,33 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
 
         for pupil in pupils:
             pupil_id = str(pupil.get("id"))
+            who = display_name(str(pupil.get("name") or ""))
+
+            # Själva barnbytet måste lyckas — annars blir allt fel.
             try:
                 await self.api.async_switch_pupil(pupil)
-                lessons = normalize_lessons(await self.api.async_lessons(pupil))
-                calendar = normalize_calendar(await self.api.async_calendar(pupil))
-                tasks = normalize_tasks(await self.api.async_tasks(pupil))
-                attendance = normalize_attendance(await self.api.async_attendance(pupil))
             except InvalidAuth as err:
                 raise ConfigEntryAuthFailed(str(err)) from err
-            except (CannotConnect, InfomentorError) as err:
-                raise UpdateFailed(f"Fel för {child_by_id.get(pupil_id)}: {err}") from err
+            except CannotConnect as err:
+                raise UpdateFailed(f"Kunde inte nå InfoMentor: {err}") from err
+            except InfomentorError as err:
+                raise UpdateFailed(f"Kunde inte byta till {who}: {err}") from err
+
+            # Enskilda endpoints får fallera utan att fälla hela uppdateringen
+            # (t.ex. en kommun där en endpoint svarar oväntat).
+            lessons = normalize_lessons(await self._safe(f"schema ({who})", self.api.async_lessons(pupil), []))
+            calendar = normalize_calendar(await self._safe(f"kalender ({who})", self.api.async_calendar(pupil), []))
+            tasks = normalize_tasks(await self._safe(f"uppgifter ({who})", self.api.async_tasks(pupil), []))
+            attendance = normalize_attendance(
+                await self._safe(f"närvaro ({who})", self.api.async_attendance(pupil), {})
+            )
 
             data.pupils.append(
                 PupilData(
                     pupil_id=pupil_id,
                     name=str(pupil.get("name") or ""),
                     switch_url=str(pupil.get("switchPupilUrl") or ""),
-                    display_name=display_name(str(pupil.get("name") or "")),
+                    display_name=who,
                     lessons=lessons,
                     calendar=calendar,
                     tasks=tasks,
@@ -114,23 +124,29 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                 )
             )
 
-        try:
-            data.notifications = normalize_notifications(
-                await self.api.async_notifications(), child_by_id
-            )
-            data.news = await self.api.async_news()
-        except InvalidAuth as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
-        except (CannotConnect, InfomentorError) as err:
-            raise UpdateFailed(f"Fel vid notiser/nyheter: {err}") from err
+        notifications = await self._safe("notiser", self.api.async_notifications(), [])
+        data.notifications = normalize_notifications(notifications, child_by_id)
+        data.news = await self._safe("nyheter", self.api.async_news(), [])
 
         if self.entry.options.get(CONF_ENABLE_LUNCH) and (
             unit := self.entry.options.get(CONF_MATEO_UNIT)
         ):
-            try:
-                data.lunch = parse_mateo_days(await self.api.async_lunch(str(unit)))
-                data.lunch_unit = str(unit)
-            except (CannotConnect, InfomentorError) as err:
-                _LOGGER.warning("Kunde inte hämta skolmat: %s", err)
+            days = await self._safe("skolmat", self.api.async_lunch(str(unit)), [])
+            data.lunch = parse_mateo_days(days)
+            data.lunch_unit = str(unit)
 
         return data
+
+    async def _safe(self, label: str, awaitable, default):
+        """Hämtar en endpoint; loggar och hoppar över vid endpoint-fel.
+
+        InvalidAuth (död session) och CannotConnect (nere) får bubbla upp — de
+        ska ge reauth respektive nytt försök. Ett oväntat endpointsvar ska inte.
+        """
+        try:
+            return await awaitable
+        except (InvalidAuth, CannotConnect):
+            raise
+        except (ApiError, InfomentorError) as err:
+            _LOGGER.warning("InfoMentor: kunde inte hämta %s – hoppar över (%s)", label, err)
+            return default

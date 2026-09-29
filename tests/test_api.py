@@ -8,7 +8,7 @@ try:
     import aiohttp  # noqa: F401
     import yarl
 
-    from custom_components.infomentor.api import InfomentorApi, InvalidAuth
+    from custom_components.infomentor.api import ApiError, InfomentorApi, InvalidAuth
 
     AVAILABLE = True
 except Exception:  # noqa: BLE001
@@ -129,6 +129,27 @@ class TestLogin(unittest.IsolatedAsyncioTestCase):
         api = InfomentorApi(session, "foralder@example.com", "fel")
         with self.assertRaises(InvalidAuth):
             await api.async_login()
+
+    async def test_non_json_endpoint_response_raises_api_error_not_auth(self):
+        """Ett oväntat endpointsvar ska INTE tolkas som fel lösenord (issue #1)."""
+        session = FakeSession([("POST", lambda u: True, FakeResponse(200, "<html>fel</html>"))])
+        api = InfomentorApi(session, "a", "b")
+        with self.assertRaises(ApiError):
+            await api._post_hub("/task/task/GetTasks", {})  # noqa: SLF001
+
+    async def test_error_status_raises_api_error(self):
+        session = FakeSession([("POST", lambda u: True, FakeResponse(500, "server error"))])
+        api = InfomentorApi(session, "a", "b")
+        with self.assertRaises(ApiError):
+            await api._post_hub("/task/task/GetTasks", {})  # noqa: SLF001
+
+    async def test_redirect_raises_invalid_auth(self):
+        session = FakeSession(
+            [("POST", lambda u: True, FakeResponse(302, location=HUB + "Authentication/Login"))]
+        )
+        api = InfomentorApi(session, "a", "b")
+        with self.assertRaises(InvalidAuth):
+            await api._post_hub("/timetable/timetable/appdata", {})  # noqa: SLF001
 
     async def test_empty_hub_body_raises_invalid_auth(self):
         class EmptySession(FakeSession):

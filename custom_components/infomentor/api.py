@@ -50,6 +50,14 @@ class InvalidAuth(InfomentorError):
     """Fel inloggningsuppgifter eller död session."""
 
 
+class ApiError(InfomentorError):
+    """En endpoint svarade oväntat — *inte* ett autentiseringsproblem.
+
+    Hålls isär från InvalidAuth så att ett trasigt endpointsvar inte startar en
+    oändlig reauth-loop. Koordinatorn loggar och hoppar över den delen i stället.
+    """
+
+
 class InfomentorApi:
     """Tunn klient mot hub.infomentor.se."""
 
@@ -108,18 +116,26 @@ class InfomentorApi:
             f"{HUB_BASE}{path}", method="POST", data=payload, headers=headers
         )
         try:
-            if response.status in (401, 403):
-                raise InvalidAuth(f"HTTP {response.status} på {path}")
+            status = response.status
+            redirected = status in {301, 302, 303, 307, 308}
             text = await response.text()
         finally:
             response.release()
+
+        # Sessionen är död → be om nya uppgifter (reauth).
+        if status in (401, 403) or redirected:
+            raise InvalidAuth(f"HTTP {status} på {path} – sessionen har gått ut")
         if not text.strip():
             # Verifierat beteende: död session svarar 200 med tom body.
             raise InvalidAuth("tomt svar – sessionen har gått ut")
+
+        # Endpoint-fel: logga och låt koordinatorn hoppa över delen.
+        if status >= 400:
+            raise ApiError(f"{path} svarade {status}: {text[:120]!r}")
         try:
             return json.loads(text)
         except json.JSONDecodeError as err:
-            raise InvalidAuth(f"ogiltigt svar på {path}") from err
+            raise ApiError(f"{path} gav ogiltigt svar: {text[:120]!r}") from err
 
     # ------------------------------------------------------------- inloggning
     async def async_login(self) -> list[dict[str, Any]]:
