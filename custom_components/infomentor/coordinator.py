@@ -104,9 +104,15 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
 
             # Enskilda endpoints får fallera utan att fälla hela uppdateringen
             # (t.ex. en kommun där en endpoint svarar oväntat).
-            lessons = normalize_lessons(await self._safe(f"schema ({who})", self.api.async_lessons(pupil), []))
-            calendar = normalize_calendar(await self._safe(f"kalender ({who})", self.api.async_calendar(pupil), []))
-            tasks = normalize_tasks(await self._safe(f"uppgifter ({who})", self.api.async_tasks(pupil), []))
+            lessons = normalize_lessons(
+                await self._safe(f"schema ({who})", self.api.async_lessons(pupil), [])
+            )
+            calendar = normalize_calendar(
+                await self._safe(f"kalender ({who})", self.api.async_calendar(pupil), [])
+            )
+            tasks = normalize_tasks(
+                await self._safe(f"uppgifter ({who})", self.api.async_tasks(pupil), [])
+            )
             attendance = normalize_attendance(
                 await self._safe(f"närvaro ({who})", self.api.async_attendance(pupil), {})
             )
