@@ -62,11 +62,19 @@ if AVAILABLE:
         def ok(self):
             return self.status < 400
 
+    class FakeCookieJar:
+        def __init__(self):
+            self.cleared = 0
+
+        def clear(self):
+            self.cleared += 1
+
     class FakeSession:
         """Skriptad session: returnerar svar per (metod, url)."""
 
         def __init__(self, routes):
             self._routes = routes
+            self.cookie_jar = FakeCookieJar()
             self.calls: list[tuple[str, str, object]] = []
 
         async def request(self, method, url, data=None, headers=None, allow_redirects=False, timeout=None):  # noqa: ANN001
@@ -143,9 +151,33 @@ class TestLogin(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ApiError):
             await api._post_hub("/task/task/GetTasks", {})  # noqa: SLF001
 
-    async def test_redirect_raises_invalid_auth(self):
+    async def test_redirect_is_logged_and_followed_once(self):
+        """Omdirigeringen följs en gång; lyckas andra försöket returneras datan."""
+        state = {"posts": 0}
+
+        def post_route():
+            state["posts"] += 1
+            if state["posts"] == 1:
+                return FakeResponse(302, location=HUB + "Authentication/Login")
+            return FakeResponse(200, json_data={"items": []})
+
         session = FakeSession(
-            [("POST", lambda u: True, FakeResponse(302, location=HUB + "Authentication/Login"))]
+            [
+                ("POST", lambda u: True, post_route),
+                ("GET", lambda u: True, FakeResponse(200, "<html></html>")),
+            ]
+        )
+        api = InfomentorApi(session, "a", "b")
+        assert await api._post_hub("/x", {}) == {"items": []}  # noqa: SLF001
+        assert state["posts"] == 2
+
+    async def test_redirect_twice_raises_invalid_auth(self):
+        """Omdirigerar den även efter försöket ger vi upp med InvalidAuth."""
+        session = FakeSession(
+            [
+                ("POST", lambda u: True, FakeResponse(302, location=HUB + "Authentication/Login")),
+                ("GET", lambda u: True, FakeResponse(200, "<html></html>")),
+            ]
         )
         api = InfomentorApi(session, "a", "b")
         with self.assertRaises(InvalidAuth):
