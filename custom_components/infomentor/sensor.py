@@ -1,4 +1,4 @@
-"""Sensorer: skoldag, uppgifter, nästa händelse och skolmat."""
+"""Sensorer: skoldag, uppgifter, nästa händelse, närvaro och skolmat."""
 
 from __future__ import annotations
 
@@ -39,6 +39,7 @@ async def async_setup_entry(
             entities.append(NextEventSensor(coordinator, entry, pupil))
             entities.append(LearnlogSensor(coordinator, entry, pupil))
             entities.append(PlansSensor(coordinator, entry, pupil))
+            entities.append(AttendanceSensor(coordinator, entry, pupil))
         entities.append(NewsSensor(coordinator, entry))
         if data.lunch_unit:
             entities.append(LunchSensor(coordinator, entry))
@@ -92,7 +93,7 @@ class SchoolDaySensor(_PupilSensor):
             "first_lesson": lessons[0]["title"] if lessons else None,
             "last_lesson": lessons[-1]["title"] if lessons else None,
             "lesson_count": len(lessons),
-            # NYTT — alla lektioner hela perioden (för kalender och dashboard)
+            # Alla lektioner hela perioden (för kalender och dashboard)
             "all_lessons": [
                 {
                     "title": l["title"],
@@ -169,11 +170,7 @@ class NextEventSensor(_PupilSensor):
 
 
 class LearnlogSensor(_PupilSensor):
-    """Lärloggen — veckobrev och annat läraren publicerar.
-
-    State är den senaste postens rubrik; hela listan (rubrik, ämne, datum och
-    text) ligger som attribut så den går att visa i en dashboard eller skicka.
-    """
+    """Lärloggen — veckobrev och annat läraren publicerar."""
 
     _attr_translation_key = "learnlog"
     _attr_icon = "mdi:email-newsletter"
@@ -209,12 +206,7 @@ class LearnlogSensor(_PupilSensor):
 
 
 class PlansSensor(_PupilSensor):
-    """Planeringar — vad klassen arbetar med just nu.
-
-    State är antalet aktiva planeringar (Unit of Learning); attributet `plans`
-    innehåller de icke-avslutade med titel, ämne, status, period, lärare och
-    termin, så en dashboard kan visa dem utan att ett anrop behövs per planering.
-    """
+    """Planeringar — vad klassen arbetar med just nu."""
 
     _attr_translation_key = "plans"
     _attr_icon = "mdi:book-open-page-variant-outline"
@@ -243,6 +235,36 @@ class PlansSensor(_PupilSensor):
             "not_started": sum(1 for plan in pupil.plans if plan["state"] == "notstarted"),
             "finished": sum(1 for plan in pupil.plans if plan["state"] == "finished"),
         }
+
+
+class AttendanceSensor(_PupilSensor):
+    """Frånvaro — antal registrerade poster, med historik som attribut.
+
+    Läser `pupil.attendance` som fylls av `normalize_attendance()` i util.py.
+    Attributet `records` innehåller hela frånvarolistan från InfoMentor.
+    """
+
+    _attr_translation_key = "attendance"
+    _attr_icon = "mdi:account-check"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "st"
+
+    def __init__(self, coordinator, entry, pupil) -> None:
+        super().__init__(coordinator, entry, pupil, "attendance")
+
+    @property
+    def native_value(self) -> int | None:
+        pupil = self.pupil
+        if pupil is None:
+            return None
+        return pupil.attendance.get("record_count", 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        pupil = self.pupil
+        if pupil is None:
+            return {}
+        return pupil.attendance
 
 
 class NewsSensor(InfomentorHubEntity, SensorEntity):
