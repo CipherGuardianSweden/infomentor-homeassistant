@@ -45,7 +45,7 @@
         "data_description": {
           "scan_interval": "Hur ofta InfoMentor hämtas (5–180 minuter).",
           "enable_lunch": "Hämta även skolmaten från Mateo.",
-          "mateo_unit_id": "Klistra in Mateo-länken (t.ex. https://meny.mateo.se/kommun/123) eller enhets-ID:t.",
+          "mateo_unit_id": "Enhets-ID:t, eller hela Mateo-länken — se guiden för hur du hittar den.",
           "names": "En per rad: 'Efternamn, Förnamn = Smeknamn'."
         }
       }
