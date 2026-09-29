@@ -71,6 +71,9 @@
       "plans": {
         "name": "Planeringar"
       },
+      "attendance": {
+        "name": "Närvaro"
+      },
       "news": {
         "name": "Skolans nyheter"
       }
@@ -78,6 +81,11 @@
     "binary_sensor": {
       "pe_next_school_day": {
         "name": "Idrott nästa skoldag"
+      }
+    },
+    "calendar": {
+      "timetable": {
+        "name": "Schema"
       }
     }
   }
