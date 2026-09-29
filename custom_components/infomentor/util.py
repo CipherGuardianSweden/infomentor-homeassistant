@@ -259,7 +259,7 @@ def normalize_notifications(
 
 
 def normalize_attendance(raw: Mapping[str, Any]) -> dict[str, Any]:
-    """attendance/appData -> närvaro."""
+    """attendance/appData -> närvaro + frånvarohistorik."""
 
     def sessions(key: str) -> list[str]:
         return [
@@ -268,12 +268,28 @@ def normalize_attendance(raw: Mapping[str, Any]) -> dict[str, Any]:
             if s.get("isAbsent")
         ]
 
+    records = [
+        {
+            "date": str(item.get("shortDate") or ""),
+            "long_date": str(item.get("longDate") or ""),
+            "time": str(item.get("time") or ""),
+            "subject": str(item.get("subject") or ""),
+            "reason": str(item.get("reason") or ""),
+            "comment": str(item.get("comment") or "").strip(),
+            "by": str(item.get("registeredByName") or "").strip(),
+            "minutes": str(item.get("minutes") or ""),
+        }
+        for item in (raw.get("pagedList") or {}).get("items") or []
+    ]
+
     return {
         "absent_today": bool(raw.get("absentToday")),
         "absent_tomorrow": bool(raw.get("absentTomorrow")),
         "today": sessions("absenceTodaySessions"),
         "tomorrow": sessions("absenceTomorrowSessions"),
         "pending_leave": len(raw.get("leaveRequests") or []),
+        "records": records,
+        "record_count": len(records),
     }
 
 
