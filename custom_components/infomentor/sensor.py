@@ -92,6 +92,18 @@ class SchoolDaySensor(_PupilSensor):
             "first_lesson": lessons[0]["title"] if lessons else None,
             "last_lesson": lessons[-1]["title"] if lessons else None,
             "lesson_count": len(lessons),
+            # NYTT — alla lektioner hela perioden (för kalender och dashboard)
+            "all_lessons": [
+                {
+                    "title": l["title"],
+                    "start": l["start"],
+                    "end": l["end"],
+                    "room": l.get("room") or "",
+                    "teachers": l.get("teachers") or "",
+                    "is_pe": bool(l.get("is_pe")),
+                }
+                for l in pupil.lessons
+            ],
         }
 
 
