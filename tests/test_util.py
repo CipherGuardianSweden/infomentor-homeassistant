@@ -269,6 +269,46 @@ class TestPlans(unittest.TestCase):
             [{"id": "5", "title": "", "subjects": [], "state": ""}],
         )
 
+    def test_parse_teachers(self):
+        self.assertEqual(util.parse_teachers("Kvarnbrink,   Erika"), ["Erika Kvarnbrink"])
+        self.assertEqual(
+            util.parse_teachers("Kvarnbrink, Erika,Gomez Fraga, Angeles"),
+            ["Erika Kvarnbrink", "Angeles Gomez Fraga"],
+        )
+        self.assertEqual(util.parse_teachers(None), [])
+
+    def test_normalize_plan_detail(self):
+        raw = {
+            "sections": [
+                {
+                    "type": "uol",
+                    "overview": [
+                        {"label": "Termin", "value": "HT26"},
+                        {"label": "Startdatum", "value": "2026-08-18T00:00:00"},
+                        {"label": "Slutdatum", "value": "2026-12-18"},
+                        {"label": "Årskurs", "value": "9"},
+                        {"label": "Lärare", "value": "Kvarnbrink, Erika"},
+                        {"label": "Beskrivning", "value": "<p>lång text som inte ska med</p>"},
+                    ],
+                },
+                {"type": "syllabus", "sections": [{"fields": [{"label": "Tidplan:", "value": "V.40"}]}]},
+            ]
+        }
+        self.assertEqual(
+            util.normalize_plan_detail(raw),
+            {
+                "term": "HT26",
+                "start": "2026-08-18",
+                "end": "2026-12-18",
+                "grade": "9",
+                "teachers": ["Erika Kvarnbrink"],
+            },
+        )
+        self.assertEqual(
+            util.normalize_plan_detail({}),
+            {"term": "", "start": "", "end": "", "grade": "", "teachers": []},
+        )
+
 
 class TestDerivation(unittest.TestCase):
     def setUp(self):

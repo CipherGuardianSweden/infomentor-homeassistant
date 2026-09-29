@@ -49,15 +49,17 @@ content: >-
 Learning"):
 
 - **state** är antalet **aktiva** planeringar
-- attributet **`plans`** innehåller de icke‑avslutade: `{id, title, subjects, state}`
+- attributet **`plans`** innehåller de icke‑avslutade:
+  `{id, title, subjects, state, start, end, teachers, term, grade}`
 - `state` är `active`, `notstarted` (planerad men inte startad) eller `finished`
   — avslutade ligger inte med i `plans`, men räknas i attributet `finished`
+- `start`/`end` är ISO‑datum, `teachers` en lista med namn
 
 ```yaml
 type: markdown
 content: |
   {%- for p in (state_attr('sensor.anna_plans','plans') or []) %}
-  - **{{ p.subjects | join(', ') or 'Planering' }}** — {{ p.title }}
+  - **{{ p.subjects | join(', ') or 'Planering' }}** — {{ p.title }} · {{ p.start[:10] }}–{{ p.end[:10] }}{% if p.teachers %} · {{ p.teachers[0] }}{% endif %}
   {%- endfor %}
 ```
 

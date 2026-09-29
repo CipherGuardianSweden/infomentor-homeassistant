@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
+from time import monotonic
 from typing import Any
 
 import aiohttp
@@ -30,6 +31,7 @@ from .util import (
     normalize_lessons,
     normalize_news,
     normalize_notifications,
+    normalize_plan_detail,
     normalize_plans,
     normalize_tasks,
     parse_mateo_days,
@@ -37,6 +39,10 @@ from .util import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# En planeringsdetalj är ett anrop per planering. Den ändras sällan, så vi
+# hämtar den för öppna planeringar och minns den i ett dygn.
+PLAN_DETAIL_TTL_HOURS = 24
 
 
 @dataclass(slots=True)
@@ -76,6 +82,9 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
         self.api = InfomentorApi(session, entry.data["username"], entry.data["password"])
         self._ok_calls = 0
         self._auth_skips = 0
+        # planerings-id -> {"at": monotonic(), "info": {...}}
+        self._plan_details: dict[str, dict[str, Any]] = {}
+        self._plan_ids_seen: set[str] = set()
         minutes = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MIN))
         super().__init__(
             hass,
@@ -121,6 +130,7 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
         data = InfomentorData()
         self._ok_calls = 0
         self._auth_skips = 0
+        self._plan_ids_seen = set()
         child_by_id: dict[str, str] = {str(p.get("id")): str(p.get("name")) for p in pupils}
 
         for pupil in pupils:
@@ -169,6 +179,7 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                     f"planeringar ({who})", self.api.async_plans(pupil), {}, strict=strict
                 )
             )
+            plans = await self._with_plan_details(plans, strict=strict)
 
             data.pupils.append(
                 PupilData(
@@ -205,7 +216,49 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
             data.lunch = parse_mateo_days(days)
             data.lunch_unit = unit
 
+        self._prune_plan_details()
         return data
+
+    async def _with_plan_details(
+        self, plans: list[dict[str, Any]], *, strict: bool
+    ) -> list[dict[str, Any]]:
+        """Fyller på öppna planeringar med period, lärare och etiketter.
+
+        Detaljen kostar ett anrop per planering och ändras sällan, så den cachas
+        i `PLAN_DETAIL_TTL_HOURS`. Avslutade planeringar visas ändå inte, så de
+        får ingen detalj.
+        """
+        out: list[dict[str, Any]] = []
+        now = monotonic()
+        for plan in plans:
+            info: dict[str, Any] | None = None
+            if plan["state"] != "finished":
+                cached = self._plan_details.get(plan["id"])
+                if cached is None or now - cached["at"] > PLAN_DETAIL_TTL_HOURS * 3600:
+                    detail = await self._safe(
+                        f"planeringsdetalj ({plan['title'] or plan['id']})",
+                        self.api.async_plan_detail(plan["id"]),
+                        {},
+                        strict=strict,
+                    )
+                    # Tomt svar = inte cacha, så vi försöker igen nästa gång.
+                    if detail:
+                        info = normalize_plan_detail(detail)
+                        self._plan_details[plan["id"]] = {"at": now, "info": info}
+                else:
+                    info = cached["info"]
+            self._plan_ids_seen.add(plan["id"])
+            out.append({**plan, **(info or {})})
+        return out
+
+    def _prune_plan_details(self) -> None:
+        """Släpper detaljer för planeringar som inte längre finns.
+
+        Körs en gång per uppdatering — inte per barn, annars skulle varje barns
+        körning kasta de andras cachade detaljer.
+        """
+        for plan_id in [key for key in self._plan_details if key not in self._plan_ids_seen]:
+            del self._plan_details[plan_id]
 
     async def _safe(self, label: str, awaitable, default, *, strict: bool = True):
         """Hämtar en endpoint; loggar och hoppar över vid endpoint-fel.

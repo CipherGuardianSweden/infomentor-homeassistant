@@ -342,6 +342,42 @@ def normalize_plans(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def parse_teachers(value: Any) -> list[str]:
+    """'Kvarnbrink,   Erika,Gomez Fraga,  Angeles' -> ['Erika Kvarnbrink', …].
+
+    Lärarlistan är parade "Efternamn, Förnamn" med kommatecken emellan.
+    """
+    parts = [part.strip() for part in str(value or "").split(",") if part.strip()]
+    out: list[str] = []
+    for index in range(0, len(parts) - 1, 2):
+        out.append(f"{parts[index + 1]} {parts[index]}")
+    if len(parts) % 2:
+        out.append(parts[-1])
+    return out
+
+
+def normalize_plan_detail(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """uolv2/GetUol -> period, termins/årskursetiketter och lärare.
+
+    Den pedagogiska planeringens texter och kunskapskraven lämnas medvetet bort:
+    de hör hemma i mejlet/historiken, och attributen ska hållas små.
+    """
+    overview: dict[str, str] = {}
+    for section in raw.get("sections") or []:
+        if not isinstance(section, Mapping) or section.get("type") != "uol":
+            continue
+        for row in section.get("overview") or []:
+            if isinstance(row, Mapping) and row.get("label"):
+                overview[str(row["label"]).strip()] = str(row.get("value") or "")
+    return {
+        "term": overview.get("Termin", ""),
+        "start": day_of(overview.get("Startdatum")),
+        "end": day_of(overview.get("Slutdatum")),
+        "grade": overview.get("Årskurs", ""),
+        "teachers": parse_teachers(overview.get("Lärare", "")),
+    }
+
+
 def parse_mateo_unit(value: Any) -> str | None:
     """Tar emot en Mateo-URL eller ett id och returnerar enhets-id:t.
 

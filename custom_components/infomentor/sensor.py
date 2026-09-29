@@ -200,8 +200,8 @@ class PlansSensor(_PupilSensor):
     """Planeringar — vad klassen arbetar med just nu.
 
     State är antalet aktiva planeringar (Unit of Learning); attributet `plans`
-    innehåller de icke-avslutade med titel, ämne och status, så en dashboard kan
-    visa dem utan att ett anrop behövs per planering.
+    innehåller de icke-avslutade med titel, ämne, status, period, lärare och
+    termin, så en dashboard kan visa dem utan att ett anrop behövs per planering.
     """
 
     _attr_translation_key = "plans"
