@@ -86,11 +86,25 @@ class InfomentorApi:
         except (TimeoutError, aiohttp.ClientError) as err:
             raise CannotConnect(str(err)) from err
 
-    async def _follow(self, url: str, *, method: str = "GET", data: Any = None) -> tuple[str, str]:
-        """Följer omdirigeringar manuellt och returnerar (slutlig_url, body)."""
-        headers: dict[str, str] = {}
+    async def _follow(
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        data: Any = None,
+        headers: MappingLike | None = None,
+    ) -> tuple[str, str]:
+        """Följer omdirigeringar manuellt och returnerar (slutlig_url, body).
+
+        `headers` skickas med på det första anropet. Vid redirect rensas de,
+        eftersom ASP.NET kan svara med en helt annan endpoint där Origin/Referer
+        inte längre är giltiga.
+        """
+        request_headers = dict(headers or {})
         for _ in range(MAX_HOPS):
-            response = await self._once(url, method=method, data=data, headers=headers)
+            response = await self._once(
+                url, method=method, data=data, headers=request_headers
+            )
             try:
                 if response.status in _REDIRECTS:
                     location = response.headers.get("Location")
@@ -98,7 +112,8 @@ class InfomentorApi:
                         return str(response.url), await response.text()
                     url = str(response.url.join(URL(location)))
                     if response.status in (302, 303):
-                        method, data, headers = "GET", None, {}
+                        method, data = "GET", None
+                        request_headers = {}
                     continue
                 text = await response.text()
                 return str(response.url), text
@@ -107,11 +122,18 @@ class InfomentorApi:
         raise CannotConnect("för många omdirigeringar")
 
     async def _post_hub(self, path: str, body: Any | None = None, *, _retried: bool = False) -> Any:
-        """POST mot en hub-endpoint. Tom body = död session."""
+        """POST mot en hub-endpoint. Tom body = död session.
+
+        `Origin` och `Referer` krävs — utan dem svarar InfoMentor 302 →
+        HandleUnauthorizedRequest (CSRF-skydd). Verifierat mot webbläsarens
+        anrop till /task/task/GetTasks och /NotificationApp/.../appData.
+        """
         headers = {
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Content-Type": "application/json",
             "X-Requested-With": "XMLHttpRequest",
+            "Origin": HUB_BASE,
+            "Referer": f"{HUB_BASE}/",
         }
         payload = json.dumps(body) if body is not None else None
         url = f"{HUB_BASE}{path}"
@@ -165,7 +187,8 @@ class InfomentorApi:
           7. GET /                → startsida med barn
 
         Utan steg 5 sätts aldrig IMHome-cookien, och då avvisar hub-endpoints
-        alla anrop med 302 → Login (se coordinator-loggen).
+        alla anrop med 302 → Login (se coordinator-loggen). Steg 6 kräver
+        dessutom Origin + Referer, annars blir sessionen halvfärdig.
         """
         self._session.cookie_jar.clear()
         _, html = await self._follow(f"{HUB_BASE}/")
@@ -213,9 +236,20 @@ class InfomentorApi:
             raise InvalidAuth("IMHome-cookien saknas – LoginCallback kördes inte korrekt")
 
         # Verifiera att sessionen svarar 'true' (webbläsaren får 'true' här).
+        # KRITISKT: Origin + Referer krävs även på detta anrop — utan dem
+        # markeras inte sessionen som fullt autentiserad och efterföljande
+        # hub-anrop svarar 302 → HandleUnauthorizedRequest.
         _, auth_body = await self._follow(
             f"{HUB_BASE}/authentication/authentication/isauthenticated/?_={int(time() * 1000)}",
             method="POST",
+            data="null",
+            headers={
+                "Accept": "*/*",
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                "Origin": HUB_BASE,
+                "Referer": f"{HUB_BASE}/",
+            },
         )
         if auth_body.strip().lower() != "true":
             raise InvalidAuth(f"isauthenticated svarade {auth_body[:80]!r}")
@@ -233,7 +267,16 @@ class InfomentorApi:
         url = pupil.get("switchPupilUrl")
         if not url:
             raise InfomentorError("barnet saknar switchPupilUrl")
-        await self._follow(str(url))
+        # Origin + Referer behövs även här — annars hamnar sessionen kvar på
+        # förra eleven och efterföljande hub-anrop svarar 302.
+        await self._follow(
+            str(url),
+            headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Origin": HUB_BASE,
+                "Referer": f"{HUB_BASE}/",
+            },
+        )
 
     async def async_lessons(self, pupil: MappingLike, *, days: int = 7) -> list[dict[str, Any]]:
         today = date.today()
