@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, timedelta
-from pathlib import Path
 from time import time
 from typing import Any
 
@@ -40,11 +39,14 @@ _BROWSER_HEADERS = {
     "Sec-GPC": "1",
 }
 
-# Forshaga kommuns IdP-nummer i InfoMentors login-formulär.
-# Sätts som cookie 'Im1_Ck_LastUsedIdp' så att F5 APM vet vilken
-# kommun som gäller — annars redirectar F5 till /login?forceOAuth=true
-# istället för till LoginCallback, och IMHome sätts aldrig.
-DEFAULT_IDP_NUMBER = "73"  # forshaga_par
+
+_NAV_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 MappingLike = dict[str, Any]
 
@@ -111,7 +113,7 @@ class InfomentorApi:
             )
             try:
                 location = response.headers.get("Location", "")
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "InfoMentor[hop %d]: %s %s → %s (location: %s)",
                     hop, method, url[:100], response.status,
                     location[:120] if location else "(ingen)",
@@ -156,7 +158,7 @@ class InfomentorApi:
 
         if status in {301, 302, 303, 307, 308}:
             target = str(URL(final_url).join(URL(location))) if location else "(okänd)"
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "InfoMentor: %s svarade %s → %s", path, status, target.replace(HUB_BASE, "")
             )
             if location and not _retried:
@@ -173,75 +175,35 @@ class InfomentorApi:
         except json.JSONDecodeError as err:
             raise ApiError(f"{path} gav ogiltigt svar: {text[:120]!r}") from err
 
-    # ------------------------------------------------------------- cookie-dump
-    def _dump_cookies(self, label: str) -> None:
-        """Sparar alla cookies till /config för analys."""
-        try:
-            data = [
-                {
-                    "key": c.key,
-                    "value": c.value,
-                    "domain": c.get("domain", ""),
-                    "path": c.get("path", "/"),
-                    "expires": str(c.get("expires", "session")),
-                    "size": len(c.value),
-                }
-                for c in self._session.cookie_jar
-            ]
-            path = Path(f"/config/infomentor_cookies_{label}.json")
-            path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-            _LOGGER.warning(
-                "InfoMentor: %d cookies sparade till %s",
-                len(data), path.name,
-            )
-        except Exception as err:
-            _LOGGER.warning("InfoMentor: kunde inte spara cookies '%s': %s", label, err)
-
     # ------------------------------------------------------------- inloggning
     async def async_login(self) -> list[dict[str, Any]]:
-        """Loggar in och returnerar barnen."""
+        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect.
+
+        Flödet är detsamma som i webbläsaren (verifierat mot en HAR-inspelning):
+          1. GET  infomentor.se/.../mentor/          → inloggningsformulär
+          2. POST formuläret                         → 302 till hubbens login-sida
+          3. Hubbens login-sida innehåller ett auto-postande formulär med
+             oauth_token → POST till infomentor.se   → 302 till LoginCallback
+          4. LoginCallback sätter IMHome-cookien     → 302 till hubben
+
+        Steg 3 måste göras manuellt (webbläsaren kör det via JavaScript); utan
+        det sätts aldrig IMHome och alla hub-anrop svarar 302.
+
+        Börjar alltid med en ren cookie-jar, annars kan en halv/gammal session
+        göra att vi aldrig hittar inloggningsformuläret.
+        """
         self._session.cookie_jar.clear()
 
-        # STEG 0: Sätt F5 APM-cookien 'Im1_Ck_LastUsedIdp' så att F5 vet
-        # vilken kommun som gäller. Utan den redirectar F5 till
-        # /login?forceOAuth=true istället för LoginCallback, och då sätts
-        # aldrig IMHome-cookien.
-        self._session.cookie_jar.update_cookies(
-            {"Im1_Ck_LastUsedIdp": DEFAULT_IDP_NUMBER},
-            response_url=URL("https://infomentor.se"),
-        )
-        _LOGGER.warning(
-            "InfoMentor: satte Im1_Ck_LastUsedIdp=%s för infomentor.se",
-            DEFAULT_IDP_NUMBER,
-        )
+        # STEG 1: Hämta inloggningsformuläret
+        _, html = await self._follow(MENTOR_LOGIN, headers=_NAV_HEADERS)
 
-        # STEG 1: Hämta formuläret från infomentor.se
-        _, html = await self._follow(
-            MENTOR_LOGIN,
-            headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none",
-                "Upgrade-Insecure-Requests": "1",
-            },
-        )
-        self._dump_cookies("01_after_get_form")
-
-        # STEG 2: Extrahera formulärfält
         view_state = hidden_input(html, "__VIEWSTATE")
         if not view_state:
             raise InvalidAuth("nådde aldrig inloggningsformuläret")
 
+        # STEG 2: Skicka med ALLA dolda fält (kommun-/IdP-listan) och credentials
         fields = find_login_fields(html)
         form = hidden_inputs(html)
-
-        idp_count = sum(1 for k in form if "IdpListRepeater" in k and k.endswith("$url"))
-        _LOGGER.warning(
-            "InfoMentor: formulär har %d fält, varav %d IDP-val", len(form), idp_count
-        )
-
-        # STEG 3: Fyll i credentials
         form[fields["username"]] = self._username
         form[fields["password"]] = self._password
         if fields.get("submit"):
@@ -249,69 +211,47 @@ class InfomentorApi:
         form["__EVENTTARGET"] = ""
         form["__EVENTARGUMENT"] = ""
 
-        # STEG 4: POST hela formuläret
         _, html = await self._follow(
             MENTOR_LOGIN,
             method="POST",
             data=form,
             headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Content-Type": "application/x-www-form-urlencoded",
+                **_NAV_HEADERS,
                 "Origin": "https://infomentor.se",
                 "Referer": MENTOR_LOGIN,
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
                 "Sec-Fetch-Site": "same-origin",
-                "Upgrade-Insecure-Requests": "1",
             },
         )
-        self._dump_cookies("02_after_post")
 
-        # STEG 5: Följ LoginCallback
+        # STEG 3: Hubbens login-sida har oauth_token som ska postas tillbaka (som webbläsarens JS gör)
+        oauth = extract_oauth_token(html)
+        if oauth:
+            _, html = await self._follow(
+                MENTOR_LOGIN,
+                method="POST",
+                data={"oauth_token": oauth},
+                headers={**_NAV_HEADERS, "Origin": HUB_BASE, "Referer": f"{HUB_BASE}/", "Sec-Fetch-Site": "same-site"},
+            )
         callback = extract_callback_url(html)
         if callback:
-            _LOGGER.warning("InfoMentor: följer LoginCallback: %s", callback[:120])
-            _, html = await self._follow(callback)
-        else:
-            _LOGGER.warning("InfoMentor: ingen LoginCallback hittades i svaret")
-        self._dump_cookies("03_after_callback")
+            _LOGGER.debug("Följer LoginCallback: %s", callback[:120])
+            await self._follow(callback, headers=_NAV_HEADERS)
 
-        cookie_names = {c.key for c in self._session.cookie_jar}
-        if "IMHome" not in cookie_names:
-            raise InvalidAuth(
-                f"IMHome-cookien saknas. Cookies: {sorted(cookie_names)}"
-            )
-
-        # STEG 6: Verifiera isauthenticated
-        _, auth_body = await self._follow(
+        # STEG 4: Verifiera sessionen
+        await self._follow(
             f"{HUB_BASE}/authentication/authentication/isauthenticated/?_={int(time() * 1000)}",
             method="POST",
-            data="null",
-            headers={
-                "Accept": "*/*",
-                "cache-control": "no-cache",
-                "Origin": HUB_BASE,
-                "Referer": f"{HUB_BASE}/",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                "X-Requested-With": "XMLHttpRequest",
-            },
+            headers={"Origin": HUB_BASE, "Referer": f"{HUB_BASE}/", "X-Requested-With": "XMLHttpRequest"},
         )
-        _LOGGER.warning("InfoMentor: isauthenticated svar = %r", auth_body[:80])
-        self._dump_cookies("04_after_isauthenticated")
 
-        if auth_body.strip().lower() != "true":
-            raise InvalidAuth(f"isauthenticated svarade {auth_body[:80]!r}")
-
-        _, root = await self._follow(f"{HUB_BASE}/")
-        self._dump_cookies("05_after_root")
-
+        _, root = await self._follow(f"{HUB_BASE}/", headers=_NAV_HEADERS)
         if "selectedPupilName" not in root:
+            cookie_names = sorted({c.key for c in self._session.cookie_jar})
+            _LOGGER.debug("Inloggning avvisad, cookies: %s", cookie_names)
             raise InvalidAuth("inloggningen avvisades")
 
         self.pupils = extract_pupils(root)
-        _LOGGER.warning("InfoMentor: Inloggad, %d barn hittade", len(self.pupils))
+        _LOGGER.debug("Inloggad, %d barn hittade", len(self.pupils))
         return self.pupils
 
     # ------------------------------------------------------------- endpoints
