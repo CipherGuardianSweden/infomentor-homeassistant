@@ -1,16 +1,11 @@
-"""InfoMentor-klient (aiohttp).
-
-Porterad från den dokumenterade Node-implementationen i
-https://github.com/c14ym0re/infomentor-api (oauth_token → mentor/ → __VIEWSTATE
-→ credentials → isauthenticated). aiohttp följer med Home Assistant, så inga
-externa beroenden krävs.
-"""
+"""InfoMentor-klient (aiohttp)."""
 
 from __future__ import annotations
 
 import json
 import logging
 from datetime import date, timedelta
+from pathlib import Path
 from time import time
 from typing import Any
 
@@ -29,7 +24,6 @@ from .util import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Chrome/154 (samma som webbläsaren — gamla User-Agents flaggas av WAF:en).
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
@@ -38,7 +32,6 @@ REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 MAX_HOPS = 20
 _REDIRECTS = {301, 302, 303, 307, 308}
 
-# Headers som webbläsaren alltid skickar (verifierat med HTTP Toolkit).
 _BROWSER_HEADERS = {
     "Accept-Language": "sv-SE,sv;q=0.8",
     "sec-ch-ua": '"Chromium";v="154", "Brave";v="154", "Not A(Brand";v="99"',
@@ -79,8 +72,6 @@ class InfomentorApi:
     async def _once(
         self, url: str, *, method: str = "GET", data: Any = None, headers: MappingLike | None = None
     ) -> aiohttp.ClientResponse:
-        # Webbläsar-headers (sec-ch-ua, Sec-GPC, Accept-Language) läggs på varje
-        # anrop — utan dem flaggar WAF:en anropet som bot.
         request_headers = {
             "User-Agent": USER_AGENT,
             **_BROWSER_HEADERS,
@@ -108,13 +99,18 @@ class InfomentorApi:
     ) -> tuple[str, str]:
         """Följer omdirigeringar manuellt och returnerar (slutlig_url, body)."""
         request_headers = dict(headers or {})
-        for _ in range(MAX_HOPS):
+        for hop in range(MAX_HOPS):
             response = await self._once(
                 url, method=method, data=data, headers=request_headers
             )
             try:
+                location = response.headers.get("Location", "")
+                _LOGGER.warning(
+                    "InfoMentor[hop %d]: %s %s → %s (location: %s)",
+                    hop, method, url[:100], response.status,
+                    location[:120] if location else "(ingen)",
+                )
                 if response.status in _REDIRECTS:
-                    location = response.headers.get("Location")
                     if not location:
                         return str(response.url), await response.text()
                     url = str(response.url.join(URL(location)))
@@ -129,16 +125,6 @@ class InfomentorApi:
         raise CannotConnect("för många omdirigeringar")
 
     async def _post_hub(self, path: str, body: Any | None = None, *, _retried: bool = False) -> Any:
-        """POST mot en hub-endpoint.
-
-        Matchar webbläsarens anrop exakt (verifierat med HTTP Toolkit):
-          * Ingen body när body är tom (Content-Length: 0)
-          * Content-Type: application/json; charset=utf-8
-          * Accept: application/json (inte den breda varianten)
-          * Origin + Referer (CSRF-skydd)
-          * Sec-Fetch-* headers
-          * INGEN X-Requested-With (den skickas bara på isauthenticated)
-        """
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json; charset=utf-8",
@@ -181,17 +167,36 @@ class InfomentorApi:
         except json.JSONDecodeError as err:
             raise ApiError(f"{path} gav ogiltigt svar: {text[:120]!r}") from err
 
+    # ------------------------------------------------------------- cookie-dump
+    def _dump_cookies(self, label: str) -> None:
+        """Sparar alla cookies till /config för analys."""
+        try:
+            data = [
+                {
+                    "key": c.key,
+                    "value": c.value,
+                    "domain": c.get("domain", ""),
+                    "path": c.get("path", "/"),
+                    "expires": str(c.get("expires", "session")),
+                    "size": len(c.value),
+                }
+                for c in self._session.cookie_jar
+            ]
+            path = Path(f"/config/infomentor_cookies_{label}.json")
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+            _LOGGER.warning(
+                "InfoMentor: %d cookies sparade till %s",
+                len(data), path.name,
+            )
+        except Exception as err:
+            _LOGGER.warning("InfoMentor: kunde inte spara cookies '%s': %s", label, err)
+
     # ------------------------------------------------------------- inloggning
     async def async_login(self) -> list[dict[str, Any]]:
-        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect.
-
-        KRITISKT: Börjar på infomentor.se/swedish/production/mentor/ — INTE hub.
-        Detta sätter F5 APM-cookien ('1184101') som krävs för hub-anropen.
-        Utan den svarar alla hub-endpoints 302 → HandleUnauthorizedRequest.
-        """
+        """Loggar in och returnerar barnen."""
         self._session.cookie_jar.clear()
 
-        # STEG 1: Hämta inloggningsformuläret från infomentor.se
+        # STEG 1: Hämta formuläret från infomentor.se
         _, html = await self._follow(
             MENTOR_LOGIN,
             headers={
@@ -202,8 +207,9 @@ class InfomentorApi:
                 "Upgrade-Insecure-Requests": "1",
             },
         )
+        self._dump_cookies("01_after_get_form")
 
-        # STEG 2: Verifiera att vi hittade formuläret och extrahera alla fält
+        # STEG 2: Extrahera formulärfält
         view_state = hidden_input(html, "__VIEWSTATE")
         if not view_state:
             raise InvalidAuth("nådde aldrig inloggningsformuläret")
@@ -212,7 +218,7 @@ class InfomentorApi:
         form = hidden_inputs(html)
 
         idp_count = sum(1 for k in form if "IdpListRepeater" in k and k.endswith("$url"))
-        _LOGGER.debug(
+        _LOGGER.warning(
             "InfoMentor: formulär har %d fält, varav %d IDP-val", len(form), idp_count
         )
 
@@ -224,8 +230,7 @@ class InfomentorApi:
         form["__EVENTTARGET"] = ""
         form["__EVENTARGUMENT"] = ""
 
-        # STEG 4: POST hela formuläret till infomentor.se
-        # Detta sätter .ASPXAUTH + NotandaUppl + F5 APM-cookien '1184101'
+        # STEG 4: POST hela formuläret
         _, html = await self._follow(
             MENTOR_LOGIN,
             method="POST",
@@ -241,16 +246,16 @@ class InfomentorApi:
                 "Upgrade-Insecure-Requests": "1",
             },
         )
+        self._dump_cookies("02_after_post")
 
-        # Logga alla cookies efter POST — för att verifiera att F5 APM-cookien sattes
-        cookie_names = {c.key for c in self._session.cookie_jar}
-        _LOGGER.warning("InfoMentor: cookies efter POST = %s", sorted(cookie_names))
-
-        # STEG 5: Följ LoginCallback (sätter IMHome)
+        # STEG 5: Följ LoginCallback
         callback = extract_callback_url(html)
         if callback:
-            _LOGGER.debug("InfoMentor: följer LoginCallback: %s", callback[:120])
+            _LOGGER.warning("InfoMentor: följer LoginCallback: %s", callback[:120])
             _, html = await self._follow(callback)
+        else:
+            _LOGGER.warning("InfoMentor: ingen LoginCallback hittades i svaret")
+        self._dump_cookies("03_after_callback")
 
         cookie_names = {c.key for c in self._session.cookie_jar}
         if "IMHome" not in cookie_names:
@@ -259,7 +264,6 @@ class InfomentorApi:
             )
 
         # STEG 6: Verifiera isauthenticated
-        # isauthenticated skickar X-Requested-With men INTE Content-Type.
         _, auth_body = await self._follow(
             f"{HUB_BASE}/authentication/authentication/isauthenticated/?_={int(time() * 1000)}",
             method="POST",
@@ -275,15 +279,20 @@ class InfomentorApi:
                 "X-Requested-With": "XMLHttpRequest",
             },
         )
+        _LOGGER.warning("InfoMentor: isauthenticated svar = %r", auth_body[:80])
+        self._dump_cookies("04_after_isauthenticated")
+
         if auth_body.strip().lower() != "true":
             raise InvalidAuth(f"isauthenticated svarade {auth_body[:80]!r}")
 
         _, root = await self._follow(f"{HUB_BASE}/")
+        self._dump_cookies("05_after_root")
+
         if "selectedPupilName" not in root:
             raise InvalidAuth("inloggningen avvisades")
 
         self.pupils = extract_pupils(root)
-        _LOGGER.debug("Inloggad, %d barn hittade", len(self.pupils))
+        _LOGGER.warning("InfoMentor: Inloggad, %d barn hittade", len(self.pupils))
         return self.pupils
 
     # ------------------------------------------------------------- endpoints
@@ -291,10 +300,7 @@ class InfomentorApi:
         url = pupil.get("switchPupilUrl")
         if not url:
             raise InfomentorError("barnet saknar switchPupilUrl")
-
-        _LOGGER.debug("InfoMentor: switchPupilUrl = %s", url)
-
-        final_url, html = await self._follow(
+        await self._follow(
             str(url),
             headers={
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -306,30 +312,12 @@ class InfomentorApi:
             },
         )
 
-        if "/Authentication/" in final_url or "login" in final_url.lower():
-            raise InvalidAuth(
-                f"elevbyte omdirigerades till login: {final_url.replace(HUB_BASE, '')}"
-            )
-        if len(html) < 200:
-            raise InvalidAuth(
-                f"elevbyte gav kort svar ({len(html)} tecken): {html[:120]!r}"
-            )
-
-        _LOGGER.debug(
-            "InfoMentor: elevbyte OK → %s (%d tecken)",
-            final_url.replace(HUB_BASE, ""),
-            len(html),
-        )
-
     async def async_lessons(self, pupil: MappingLike, *, days: int = 7) -> list[dict[str, Any]]:
         today = date.today()
         data = await self._post_hub(
             "/timetable/timetable/gettimetablelist",
-            {
-                "UTCOffset": "-120",
-                "start": today.isoformat(),
-                "end": (today + timedelta(days=days)).isoformat(),
-            },
+            {"UTCOffset": "-120", "start": today.isoformat(),
+             "end": (today + timedelta(days=days)).isoformat()},
         )
         return data if isinstance(data, list) else data.get("items", [])
 
@@ -350,25 +338,18 @@ class InfomentorApi:
         return data if isinstance(data, dict) else {}
 
     async def async_learnlog(self, pupil: MappingLike) -> dict[str, Any]:
-        """Lärloggen (veckobrev m.m.) för valt barn."""
         data = await self._post_hub("/learnlog/learnlog/appData")
         return data if isinstance(data, dict) else {}
 
     async def async_plan_detail(self, uol_id: str) -> dict[str, Any]:
-        """En planerings innehåll (översikt, pedagogisk planering, kriterier).
-
-        Body-nyckeln måste vara just `id` — `uolId`/`Id` svarar HTTP 500.
-        """
         data = await self._post_hub("/UolV2/UolV2/GetUol", {"id": uol_id})
         return data if isinstance(data, dict) else {}
 
     async def async_plans(self, pupil: MappingLike) -> dict[str, Any]:
-        """Planeringar (Unit of Learning) för valt barn."""
         data = await self._post_hub("/UolV2/UolV2/GetUols")
         return data if isinstance(data, dict) else {}
 
     async def async_notifications(self) -> list[dict[str, Any]]:
-        """Senaste notiserna. Använder appData (ingen body krävs)."""
         data = await self._post_hub("/NotificationApp/NotificationApp/appData")
         return data.get("notifications", []) if isinstance(data, dict) else []
 
@@ -381,10 +362,7 @@ class InfomentorApi:
 
     async def async_lunch(self, unit_id: str, *, days: int = 14) -> list[dict[str, Any]]:
         today = date.today()
-        url = (
-            f"{MATEO_API}/{unit_id}"
-            f"?from={today.isoformat()}&to={(today + timedelta(days=days)).isoformat()}"
-        )
+        url = f"{MATEO_API}/{unit_id}?from={today.isoformat()}&to={(today + timedelta(days=days)).isoformat()}"
         response = await self._once(
             url, headers={"Accept": "application/json", "Referer": "https://meny.mateo.se/"}
         )
