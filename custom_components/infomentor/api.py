@@ -29,13 +29,23 @@ from .util import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Chrome/154 (samma som webbläsaren — gamla User-Agents flaggas av WAF:en).
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
 )
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 MAX_HOPS = 20
 _REDIRECTS = {301, 302, 303, 307, 308}
+
+# Headers som webbläsaren alltid skickar (verifierat med HTTP Toolkit).
+_BROWSER_HEADERS = {
+    "Accept-Language": "sv-SE,sv;q=0.8",
+    "sec-ch-ua": '"Chromium";v="154", "Brave";v="154", "Not A(Brand";v="99"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "Sec-GPC": "1",
+}
 
 MappingLike = dict[str, Any]
 
@@ -73,7 +83,13 @@ class InfomentorApi:
     async def _once(
         self, url: str, *, method: str = "GET", data: Any = None, headers: MappingLike | None = None
     ) -> aiohttp.ClientResponse:
-        request_headers = {"User-Agent": USER_AGENT, **(headers or {})}
+        # Webbläsar-headers (sec-ch-ua, Sec-GPC, Accept-Language) läggs på varje
+        # anrop — utan dem flaggar WAF:en anropet som bot.
+        request_headers = {
+            "User-Agent": USER_AGENT,
+            **_BROWSER_HEADERS,
+            **(headers or {}),
+        }
         try:
             return await self._session.request(
                 method,
@@ -117,19 +133,27 @@ class InfomentorApi:
         raise CannotConnect("för många omdirigeringar")
 
     async def _post_hub(self, path: str, body: Any | None = None, *, _retried: bool = False) -> Any:
-        """POST mot en hub-endpoint. Tom body = död session.
+        """POST mot en hub-endpoint.
 
-        `Origin` och `Referer` krävs — utan dem svarar InfoMentor 302 →
-        HandleUnauthorizedRequest (CSRF-skydd).
+        Matchar webbläsarens anrop exakt (verifierat med HTTP Toolkit):
+          * Ingen body när body är tom (Content-Length: 0)
+          * Content-Type: application/json; charset=utf-8
+          * Accept: application/json (inte den breda varianten)
+          * Origin + Referer (CSRF-skydd)
+          * Sec-Fetch-* headers
+          * INGEN X-Requested-With (den skickas bara på isauthenticated)
         """
         headers = {
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
             "Origin": HUB_BASE,
             "Referer": f"{HUB_BASE}/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
         }
-        payload = json.dumps(body) if body is not None else None
+        # Ingen body när body är {} eller None — webbläsaren skickar Content-Length: 0
+        payload = json.dumps(body) if body else None
         url = f"{HUB_BASE}{path}"
         response = await self._once(url, method="POST", data=payload, headers=headers)
         try:
@@ -202,16 +226,20 @@ class InfomentorApi:
         if "IMHome" not in cookie_names:
             raise InvalidAuth("IMHome-cookien saknas – LoginCallback kördes inte korrekt")
 
+        # isauthenticated skickar X-Requested-With men INTE Content-Type.
         _, auth_body = await self._follow(
             f"{HUB_BASE}/authentication/authentication/isauthenticated/?_={int(time() * 1000)}",
             method="POST",
             data="null",
             headers={
                 "Accept": "*/*",
-                "Content-Type": "application/json",
-                "X-Requested-With": "XMLHttpRequest",
+                "cache-control": "no-cache",
                 "Origin": HUB_BASE,
                 "Referer": f"{HUB_BASE}/",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+                "X-Requested-With": "XMLHttpRequest",
             },
         )
         if auth_body.strip().lower() != "true":
@@ -239,6 +267,9 @@ class InfomentorApi:
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Origin": HUB_BASE,
                 "Referer": f"{HUB_BASE}/",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-site",
             },
         )
 
@@ -278,16 +309,16 @@ class InfomentorApi:
         return data if isinstance(data, list) else []
 
     async def async_tasks(self, pupil: MappingLike) -> list[dict[str, Any]]:
-        data = await self._post_hub("/task/task/GetTasks", {})
+        data = await self._post_hub("/task/task/GetTasks")
         return data.get("items", []) if isinstance(data, dict) else []
 
     async def async_attendance(self, pupil: MappingLike) -> dict[str, Any]:
-        data = await self._post_hub("/attendance/attendance/appData", {})
+        data = await self._post_hub("/attendance/attendance/appData")
         return data if isinstance(data, dict) else {}
 
     async def async_learnlog(self, pupil: MappingLike) -> dict[str, Any]:
         """Lärloggen (veckobrev m.m.) för valt barn."""
-        data = await self._post_hub("/learnlog/learnlog/appData", {})
+        data = await self._post_hub("/learnlog/learnlog/appData")
         return data if isinstance(data, dict) else {}
 
     async def async_plan_detail(self, uol_id: str) -> dict[str, Any]:
@@ -300,15 +331,19 @@ class InfomentorApi:
 
     async def async_plans(self, pupil: MappingLike) -> dict[str, Any]:
         """Planeringar (Unit of Learning) för valt barn."""
-        data = await self._post_hub("/UolV2/UolV2/GetUols", {})
+        data = await self._post_hub("/UolV2/UolV2/GetUols")
         return data if isinstance(data, dict) else {}
 
     async def async_notifications(self) -> list[dict[str, Any]]:
-        data = await self._post_hub("/NotificationApp/NotificationApp/GetNotifications", {})
+        """Senaste notiserna. Använder appData (ingen body krävs)."""
+        data = await self._post_hub("/NotificationApp/NotificationApp/appData")
         return data.get("notifications", []) if isinstance(data, dict) else []
 
     async def async_news(self) -> list[dict[str, Any]]:
-        data = await self._post_hub("/Communication/News/GetNewsList", {})
+        data = await self._post_hub(
+            "/Communication/News/GetNewsList",
+            {"pageSize": -1, "sortBy": "lastPublishDate___SORT_DESC"},
+        )
         return data.get("items", []) if isinstance(data, dict) else []
 
     async def async_lunch(self, unit_id: str, *, days: int = 14) -> list[dict[str, Any]]:
