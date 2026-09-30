@@ -63,11 +63,7 @@ class InvalidAuth(InfomentorError):
 
 
 class ApiError(InfomentorError):
-    """En endpoint svarade oväntat — *inte* ett autentiseringsproblem.
-
-    Hålls isär från InvalidAuth så att ett trasigt endpointsvar inte startar en
-    oändlig reauth-loop. Koordinatorn loggar och hoppar över den delen i stället.
-    """
+    """En endpoint svarade oväntat — *inte* ett autentiseringsproblem."""
 
 
 class InfomentorApi:
@@ -152,7 +148,6 @@ class InfomentorApi:
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
         }
-        # Ingen body när body är {} eller None — webbläsaren skickar Content-Length: 0
         payload = json.dumps(body) if body else None
         url = f"{HUB_BASE}{path}"
         response = await self._once(url, method="POST", data=payload, headers=headers)
@@ -188,35 +183,70 @@ class InfomentorApi:
 
     # ------------------------------------------------------------- inloggning
     async def async_login(self) -> list[dict[str, Any]]:
-        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect."""
+        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect.
+
+        KRITISKT: Börjar på infomentor.se/swedish/production/mentor/ — INTE hub.
+        Detta sätter F5 APM-cookien ('1184101') som krävs för hub-anropen.
+        Utan den svarar alla hub-endpoints 302 → HandleUnauthorizedRequest.
+        """
         self._session.cookie_jar.clear()
-        _, html = await self._follow(f"{HUB_BASE}/")
 
-        oauth = extract_oauth_token(html)
-        if oauth:
-            _, html = await self._follow(MENTOR_LOGIN, method="POST", data={"oauth_token": oauth})
+        # STEG 1: Hämta inloggningsformuläret från infomentor.se
+        _, html = await self._follow(
+            MENTOR_LOGIN,
+            headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Upgrade-Insecure-Requests": "1",
+            },
+        )
 
+        # STEG 2: Verifiera att vi hittade formuläret och extrahera alla fält
         view_state = hidden_input(html, "__VIEWSTATE")
         if not view_state:
             raise InvalidAuth("nådde aldrig inloggningsformuläret")
 
         fields = find_login_fields(html)
         form = hidden_inputs(html)
-        idp_count = sum(1 for key in form if "IdpListRepeater" in key and key.endswith("$url"))
-        if idp_count:
-            _LOGGER.debug("Inloggningsformuläret innehåller %d kommun-/IdP-val", idp_count)
+
+        idp_count = sum(1 for k in form if "IdpListRepeater" in k and k.endswith("$url"))
+        _LOGGER.debug(
+            "InfoMentor: formulär har %d fält, varav %d IDP-val", len(form), idp_count
+        )
+
+        # STEG 3: Fyll i credentials
         form[fields["username"]] = self._username
         form[fields["password"]] = self._password
         if fields.get("submit"):
             form[fields["submit"]] = "Logga in"
         form["__EVENTTARGET"] = ""
         form["__EVENTARGUMENT"] = ""
-        _, html = await self._follow(MENTOR_LOGIN, method="POST", data=form)
 
-        oauth = extract_oauth_token(html)
-        if oauth:
-            _, html = await self._follow(MENTOR_LOGIN, method="POST", data={"oauth_token": oauth})
+        # STEG 4: POST hela formuläret till infomentor.se
+        # Detta sätter .ASPXAUTH + NotandaUppl + F5 APM-cookien '1184101'
+        _, html = await self._follow(
+            MENTOR_LOGIN,
+            method="POST",
+            data=form,
+            headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Origin": "https://infomentor.se",
+                "Referer": MENTOR_LOGIN,
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-origin",
+                "Upgrade-Insecure-Requests": "1",
+            },
+        )
 
+        # Logga alla cookies efter POST — för att verifiera att F5 APM-cookien sattes
+        cookie_names = {c.key for c in self._session.cookie_jar}
+        _LOGGER.warning("InfoMentor: cookies efter POST = %s", sorted(cookie_names))
+
+        # STEG 5: Följ LoginCallback (sätter IMHome)
         callback = extract_callback_url(html)
         if callback:
             _LOGGER.debug("InfoMentor: följer LoginCallback: %s", callback[:120])
@@ -224,8 +254,11 @@ class InfomentorApi:
 
         cookie_names = {c.key for c in self._session.cookie_jar}
         if "IMHome" not in cookie_names:
-            raise InvalidAuth("IMHome-cookien saknas – LoginCallback kördes inte korrekt")
+            raise InvalidAuth(
+                f"IMHome-cookien saknas. Cookies: {sorted(cookie_names)}"
+            )
 
+        # STEG 6: Verifiera isauthenticated
         # isauthenticated skickar X-Requested-With men INTE Content-Type.
         _, auth_body = await self._follow(
             f"{HUB_BASE}/authentication/authentication/isauthenticated/?_={int(time() * 1000)}",
