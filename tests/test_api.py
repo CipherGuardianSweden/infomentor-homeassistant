@@ -70,6 +70,9 @@ if AVAILABLE:
         def clear(self):
             self.cleared += 1
 
+        def filter_cookies(self, url):  # noqa: ANN001
+            return {}
+
     class FakeSession:
         """Skriptad session: returnerar svar per (metod, url)."""
 
@@ -92,30 +95,44 @@ if AVAILABLE:
 @unittest.skipUnless(AVAILABLE, "kräver aiohttp och Home Assistant-paketet")
 class TestLogin(unittest.IsolatedAsyncioTestCase):
     def _routes(self, hub_html=HUB_HTML):
-        state = {"hub": 0, "mentor": 0}
+        """Webbläsarens flöde: formulär → POST → hubbens oauth-sida → POST → LoginCallback."""
+        state = {"posts": 0}
 
-        def hub_root():
-            state["hub"] += 1
-            if state["hub"] == 1:
-                return FakeResponse(302, location=HUB + "Authentication/Authentication/Login?ReturnUrl=%2F")
-            return FakeResponse(200, hub_html)
-
-        def mentor():
-            state["mentor"] += 1
-            if state["mentor"] == 1:
-                return FakeResponse(200, LOGIN_HTML)
-            if state["mentor"] == 2:
+        def mentor_post():
+            state["posts"] += 1
+            if state["posts"] == 1:
                 return FakeResponse(302, location=HUB + "authentication/authentication/login?apitype=im1")
             return FakeResponse(302, location=HUB + "Authentication/Authentication/LoginCallback")
 
         return [
             ("POST", lambda u: "isauthenticated" in u, FakeResponse(200, "{}")),
-            ("POST", lambda u: u == MENTOR, mentor),
+            ("POST", lambda u: u == MENTOR, mentor_post),
+            ("GET", lambda u: u == MENTOR, FakeResponse(200, LOGIN_HTML)),
             ("GET", lambda u: "logincallback" in u.lower(), FakeResponse(302, location=HUB + "#/")),
             ("GET", lambda u: u.endswith("#/"), FakeResponse(200, "")),
             ("GET", lambda u: "authentication/authentication/login" in u.lower(), FakeResponse(200, OAUTH_HTML)),
-            ("GET", lambda u: u == HUB, hub_root),
+            ("GET", lambda u: u == HUB, FakeResponse(200, hub_html)),
         ]
+
+    def test_redirect_headers_keep_referer_like_a_browser(self):
+        """Hubbens LoginCallback kraschar utan Referer – den ska följa med över redirects."""
+        headers = {"Accept": "text/html", "Origin": HUB, "Referer": HUB, "Content-Type": "x"}
+        same = InfomentorApi._redirect_headers(headers, HUB + "Authentication/LoginCallback")  # noqa: SLF001
+        self.assertEqual(same, {"Accept": "text/html", "Referer": HUB})
+        cross = InfomentorApi._redirect_headers(  # noqa: SLF001
+            {"Referer": MENTOR}, HUB + "authentication/authentication/login"
+        )
+        self.assertEqual(cross, {"Referer": "https://infomentor.se/"})
+
+    async def test_unauthorized_module_redirect_is_api_error_not_dead_session(self):
+        """302 → HandleUnauthorizedRequest = saknar behörighet till modulen, inte utloggad."""
+        session = FakeSession(
+            [("POST", lambda u: True, FakeResponse(302, location=HUB + "Home/Home/HandleUnauthorizedRequest"))]
+        )
+        api = InfomentorApi(session, "a", "b")
+        with self.assertRaises(ApiError):
+            await api._post_hub("/task/task/GetTasks")  # noqa: SLF001
+        self.assertEqual(len(session.calls), 1)  # ingen retry/omdirigering följdes
 
     async def test_login_returns_pupils(self):
         session = FakeSession(self._routes())
