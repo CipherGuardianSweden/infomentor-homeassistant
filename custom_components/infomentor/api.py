@@ -85,6 +85,11 @@ class InfomentorApi:
             **_BROWSER_HEADERS,
             **(headers or {}),
         }
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug(
+                "InfoMentor: %s %s skickar cookies: %s",
+                method, url[:80], sorted(self._session.cookie_jar.filter_cookies(URL(url))),
+            )
         try:
             return await self._session.request(
                 method,
