@@ -33,3 +33,8 @@ ATTR_ATTRIBUTION: Final = "Data från InfoMentor"
 def clamp_interval(minutes: int) -> int:
     """Håller uppdateringsintervallet inom tillåtna gränser."""
     return max(MIN_SCAN_INTERVAL_MIN, min(MAX_SCAN_INTERVAL_MIN, int(minutes)))
+
+# Uppgifter (/task/task/GetTasks) är tillfälligt avstängda: kontot saknar behörighet
+# till uppgiftsmodulen (hubben svarar 302 → HandleUnauthorizedRequest). Koden finns
+# kvar — sätt till True för att slå på igen.
+ENABLE_TASKS: Final = False
