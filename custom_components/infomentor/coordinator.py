@@ -21,6 +21,7 @@ from .const import (
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL_MIN,
     DOMAIN,
+    ENABLE_TASKS,
     clamp_interval,
 )
 from .util import (
@@ -159,11 +160,13 @@ class InfomentorCoordinator(DataUpdateCoordinator[InfomentorData]):
                     f"kalender ({who})", self.api.async_calendar(pupil), [], strict=strict
                 )
             )
-            tasks = normalize_tasks(
-                await self._safe(
-                    f"uppgifter ({who})", self.api.async_tasks(pupil), [], strict=strict
+            tasks = []
+            if ENABLE_TASKS:
+                tasks = normalize_tasks(
+                    await self._safe(
+                        f"uppgifter ({who})", self.api.async_tasks(pupil), [], strict=strict
+                    )
                 )
-            )
             attendance = normalize_attendance(
                 await self._safe(
                     f"närvaro ({who})", self.api.async_attendance(pupil), {}, strict=strict
