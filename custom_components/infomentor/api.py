@@ -102,6 +102,22 @@ class InfomentorApi:
         except (TimeoutError, aiohttp.ClientError) as err:
             raise CannotConnect(str(err)) from err
 
+    @staticmethod
+    def _redirect_headers(headers: MappingLike, new_url: str) -> MappingLike:
+        """Headers för nästa hopp – som en webbläsare: behåll Accept och Referer.
+
+        Hubben kraschar (302 → /Home/Errors/Server) på LoginCallback om Referer
+        saknas. Webbläsaren skickar den ursprungliga Referer på varje hopp, men
+        kortar den till enbart origin när målet är en annan host.
+        """
+        kept = {k: v for k, v in headers.items() if k in ("Accept", "Upgrade-Insecure-Requests")}
+        referer = headers.get("Referer")
+        if referer:
+            ref = URL(referer)
+            same_host = ref.host == URL(new_url).host
+            kept["Referer"] = referer if same_host else f"{ref.scheme}://{ref.host}/"
+        return kept
+
     async def _follow(
         self,
         url: str,
@@ -129,7 +145,7 @@ class InfomentorApi:
                     url = str(response.url.join(URL(location)))
                     if response.status in (302, 303):
                         method, data = "GET", None
-                        request_headers = {}
+                        request_headers = self._redirect_headers(request_headers, url)
                     continue
                 text = await response.text()
                 return str(response.url), text
