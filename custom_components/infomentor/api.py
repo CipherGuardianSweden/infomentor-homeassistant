@@ -182,6 +182,9 @@ class InfomentorApi:
             _LOGGER.debug(
                 "InfoMentor: %s svarade %s → %s", path, status, target.replace(HUB_BASE, "")
             )
+            if "HandleUnauthorizedRequest" in target:
+                # Saknar behörighet till modulen (t.ex. uppgifter) – inte en död session.
+                raise ApiError(f"{path}: saknar behörighet ({target.replace(HUB_BASE, '')})")
             if location and not _retried:
                 await self._follow(target)
                 return await self._post_hub(path, body, _retried=True)
