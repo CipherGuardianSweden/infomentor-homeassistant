@@ -40,6 +40,12 @@ _BROWSER_HEADERS = {
     "Sec-GPC": "1",
 }
 
+# Forshaga kommuns IdP-nummer i InfoMentors login-formulär.
+# Sätts som cookie 'Im1_Ck_LastUsedIdp' så att F5 APM vet vilken
+# kommun som gäller — annars redirectar F5 till /login?forceOAuth=true
+# istället för till LoginCallback, och IMHome sätts aldrig.
+DEFAULT_IDP_NUMBER = "73"  # forshaga_par
+
 MappingLike = dict[str, Any]
 
 
@@ -195,6 +201,19 @@ class InfomentorApi:
     async def async_login(self) -> list[dict[str, Any]]:
         """Loggar in och returnerar barnen."""
         self._session.cookie_jar.clear()
+
+        # STEG 0: Sätt F5 APM-cookien 'Im1_Ck_LastUsedIdp' så att F5 vet
+        # vilken kommun som gäller. Utan den redirectar F5 till
+        # /login?forceOAuth=true istället för LoginCallback, och då sätts
+        # aldrig IMHome-cookien.
+        self._session.cookie_jar.update_cookies(
+            {"Im1_Ck_LastUsedIdp": DEFAULT_IDP_NUMBER},
+            response_url=URL("https://infomentor.se"),
+        )
+        _LOGGER.warning(
+            "InfoMentor: satte Im1_Ck_LastUsedIdp=%s för infomentor.se",
+            DEFAULT_IDP_NUMBER,
+        )
 
         # STEG 1: Hämta formuläret från infomentor.se
         _, html = await self._follow(
