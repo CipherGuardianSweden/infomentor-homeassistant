@@ -94,12 +94,7 @@ class InfomentorApi:
         data: Any = None,
         headers: MappingLike | None = None,
     ) -> tuple[str, str]:
-        """Följer omdirigeringar manuellt och returnerar (slutlig_url, body).
-
-        `headers` skickas med på det första anropet. Vid redirect rensas de,
-        eftersom ASP.NET kan svara med en helt annan endpoint där Origin/Referer
-        inte längre är giltiga.
-        """
+        """Följer omdirigeringar manuellt och returnerar (slutlig_url, body)."""
         request_headers = dict(headers or {})
         for _ in range(MAX_HOPS):
             response = await self._once(
@@ -125,8 +120,7 @@ class InfomentorApi:
         """POST mot en hub-endpoint. Tom body = död session.
 
         `Origin` och `Referer` krävs — utan dem svarar InfoMentor 302 →
-        HandleUnauthorizedRequest (CSRF-skydd). Verifierat mot webbläsarens
-        anrop till /task/task/GetTasks och /NotificationApp/.../appData.
+        HandleUnauthorizedRequest (CSRF-skydd).
         """
         headers = {
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -151,9 +145,6 @@ class InfomentorApi:
 
         if status in {301, 302, 303, 307, 308}:
             target = str(URL(final_url).join(URL(location))) if location else "(okänd)"
-            # Omdirigeringen kan vara ett led i auth-handskakningen (forceOAuth).
-            # Följ den en gång och gör om anropet innan vi ger upp — och logga
-            # alltid vart den pekar så att felrapporter blir åtgärdbara.
             _LOGGER.warning(
                 "InfoMentor: %s svarade %s → %s", path, status, target.replace(HUB_BASE, "")
             )
@@ -162,10 +153,8 @@ class InfomentorApi:
                 return await self._post_hub(path, body, _retried=True)
             raise InvalidAuth(f"{path} omdirigerade till {target}")
         if not text.strip():
-            # Verifierat beteende: död session svarar 200 med tom body.
             raise InvalidAuth("tomt svar – sessionen har gått ut")
 
-        # Endpoint-fel: logga och låt koordinatorn hoppa över delen.
         if status >= 400:
             raise ApiError(f"{path} svarade {status}: {text[:120]!r}")
         try:
@@ -175,21 +164,7 @@ class InfomentorApi:
 
     # ------------------------------------------------------------- inloggning
     async def async_login(self) -> list[dict[str, Any]]:
-        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect.
-
-        Följer webbläsarens flöde:
-          1. GET /                → oauth_token
-          2. POST MENTOR_LOGIN    → formulärsida
-          3. POST MENTOR_LOGIN    → credentials
-          4. POST MENTOR_LOGIN    → oauth_token igen
-          5. GET  LoginCallback   → IMHome-cookie  ← KRITISKT
-          6. POST isauthenticated → verifiering
-          7. GET /                → startsida med barn
-
-        Utan steg 5 sätts aldrig IMHome-cookien, och då avvisar hub-endpoints
-        alla anrop med 302 → Login (se coordinator-loggen). Steg 6 kräver
-        dessutom Origin + Referer, annars blir sessionen halvfärdig.
-        """
+        """Loggar in och returnerar barnen. Kastar InvalidAuth/CannotConnect."""
         self._session.cookie_jar.clear()
         _, html = await self._follow(f"{HUB_BASE}/")
 
@@ -202,9 +177,6 @@ class InfomentorApi:
             raise InvalidAuth("nådde aldrig inloggningsformuläret")
 
         fields = find_login_fields(html)
-        # Skicka med ALLA dolda fält precis som en webbläsare gör. Login-sidan
-        # bäddar in hela kommun-/IdP-listan i dem; utan dem kan sessionen hamna
-        # hos fel kommun och API-anropen svarar 302 (se #1/#2).
         form = hidden_inputs(html)
         idp_count = sum(1 for key in form if "IdpListRepeater" in key and key.endswith("$url"))
         if idp_count:
@@ -221,24 +193,15 @@ class InfomentorApi:
         if oauth:
             _, html = await self._follow(MENTOR_LOGIN, method="POST", data={"oauth_token": oauth})
 
-        # KRITISKT: följ LoginCallback så att IMHome-cookien sätts. Utan detta
-        # steg är sessionen inte giltig för hub-anropen, och alla endpoints
-        # svarar 302 → Login (intermittent "tomma" sensorer).
         callback = extract_callback_url(html)
         if callback:
             _LOGGER.debug("InfoMentor: följer LoginCallback: %s", callback[:120])
             _, html = await self._follow(callback)
 
-        # Verifiera att IMHome-cookien faktiskt sitter. Utan den är sessionen
-        # halvfärdig och hub-anropen kommer att avvisas.
         cookie_names = {c.key for c in self._session.cookie_jar}
         if "IMHome" not in cookie_names:
             raise InvalidAuth("IMHome-cookien saknas – LoginCallback kördes inte korrekt")
 
-        # Verifiera att sessionen svarar 'true' (webbläsaren får 'true' här).
-        # KRITISKT: Origin + Referer krävs även på detta anrop — utan dem
-        # markeras inte sessionen som fullt autentiserad och efterföljande
-        # hub-anrop svarar 302 → HandleUnauthorizedRequest.
         _, auth_body = await self._follow(
             f"{HUB_BASE}/authentication/authentication/isauthenticated/?_={int(time() * 1000)}",
             method="POST",
@@ -267,15 +230,31 @@ class InfomentorApi:
         url = pupil.get("switchPupilUrl")
         if not url:
             raise InfomentorError("barnet saknar switchPupilUrl")
-        # Origin + Referer behövs även här — annars hamnar sessionen kvar på
-        # förra eleven och efterföljande hub-anrop svarar 302.
-        await self._follow(
+
+        _LOGGER.debug("InfoMentor: switchPupilUrl = %s", url)
+
+        final_url, html = await self._follow(
             str(url),
             headers={
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Origin": HUB_BASE,
                 "Referer": f"{HUB_BASE}/",
             },
+        )
+
+        if "/Authentication/" in final_url or "login" in final_url.lower():
+            raise InvalidAuth(
+                f"elevbyte omdirigerades till login: {final_url.replace(HUB_BASE, '')}"
+            )
+        if len(html) < 200:
+            raise InvalidAuth(
+                f"elevbyte gav kort svar ({len(html)} tecken): {html[:120]!r}"
+            )
+
+        _LOGGER.debug(
+            "InfoMentor: elevbyte OK → %s (%d tecken)",
+            final_url.replace(HUB_BASE, ""),
+            len(html),
         )
 
     async def async_lessons(self, pupil: MappingLike, *, days: int = 7) -> list[dict[str, Any]]:
@@ -320,11 +299,7 @@ class InfomentorApi:
         return data if isinstance(data, dict) else {}
 
     async def async_plans(self, pupil: MappingLike) -> dict[str, Any]:
-        """Planeringar (Unit of Learning) för valt barn.
-
-        Detaljvyn (`GetUol` med body `{id}`) hämtas medvetet inte här — den
-        kostar ett anrop per planering och behövs inte för listan.
-        """
+        """Planeringar (Unit of Learning) för valt barn."""
         data = await self._post_hub("/UolV2/UolV2/GetUols", {})
         return data if isinstance(data, dict) else {}
 
